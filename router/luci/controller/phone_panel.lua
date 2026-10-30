@@ -1,4 +1,13 @@
 module('luci.controller.phone_panel', package.seeall)
+local function feature_json(action,arg)
+ local h=require('luci.http')
+ local command='/usr/bin/ruby /etc/phone-dns/feature-api.rb '..require('luci.util').shellquote(action)
+ if arg then command=command..' '..require('luci.util').shellquote(arg) end
+ local output=require('luci.sys').exec(command..' 2>/dev/null')
+ h.header('Cache-Control','no-store');h.prepare_content('application/json')
+ if not require('luci.jsonc').parse(output) then h.status(500,'Internal Server Error');h.write('{"error":"功能服务未返回有效响应"}');return end
+ h.write(output)
+end
 function index()
  local p=entry({'admin','services','phone_panel'},alias('admin','services','phone_panel','home'),'手机出口与 DNS',55)
  entry({'admin','services','phone_panel','home'},template('phone_panel'),'主页',10)
@@ -16,6 +25,16 @@ function index()
  entry({'admin','services','phone_panel','preview'},post('preview_device')).leaf=true
  entry({'admin','services','phone_panel','apply'},post('apply_device')).leaf=true
  entry({'admin','services','phone_panel','job'},call('job_status')).leaf=true
+ entry({'admin','services','phone_panel','assets'},call('feature_asset')).leaf=true
+ entry({'admin','services','phone_panel','candidates'},call('feature_candidates')).leaf=true
+ entry({'admin','services','phone_panel','health'},call('feature_health')).leaf=true
+ entry({'admin','services','phone_panel','versions'},call('feature_versions')).leaf=true
+ entry({'admin','services','phone_panel','bulk_preview'},post('bulk_preview')).leaf=true
+ entry({'admin','services','phone_panel','bulk_apply'},post('bulk_apply')).leaf=true
+ entry({'admin','services','phone_panel','ack'},post('feature_ack')).leaf=true
+ entry({'admin','services','phone_panel','check_update'},post('feature_check_update')).leaf=true
+ entry({'admin','services','phone_panel','upgrade'},post('feature_upgrade')).leaf=true
+ entry({'admin','services','phone_panel','restore_release'},post('feature_restore')).leaf=true
 end
 function status()
  local h=require('luci.http')
@@ -24,22 +43,9 @@ function status()
  h.write(require('luci.sys').exec('/usr/bin/ruby /etc/phone-dns/panel-status.rb 2>/dev/null'))
 end
 function probe()
- local h=require('luci.http');local j=require('luci.jsonc');local n=require('nixio')
- local id=h.formvalue('id')
- if not id or not id:match('^%d+$') or tonumber(id)<1 or tonumber(id)>100 then h.status(400,'Bad Request');h.prepare_content('application/json');h.write('{"error":"invalid group"}');return end
- local function port(k,default) local v=tonumber(require('luci.model.uci').cursor():get('phone_panel','main',k)) or default;if v~=math.floor(v) or v+tonumber(id)<1024 or v+tonumber(id)>65535 then error('invalid port setting') end;return v end
- local db=port('dns_base',15300);local sb=port('socks_base',18000)
- local i=tonumber(id);local result={id=i,time=os.date('%Y-%m-%d %H:%M:%S'),dns_ok=false}
- local s=n.socket('inet','dgram')
- if s then
-  s:setopt('socket','rcvtimeo',3);s:connect('127.0.0.1',db+i)
-  local q=string.char(122,i,1,0,0,1,0,0,0,0,0,0,7)..'example'..string.char(3)..'com'..string.char(0,0,1,0,1)
-  s:send(q);local r=s:recv(4096);s:close()
-  if r and #r>=12 and r:byte(1)==122 and r:byte(2)==i then result.rcode=r:byte(4)%16;result.answers=r:byte(7)*256+r:byte(8);result.dns_ok=result.rcode==0 and result.answers>0 end
- end
- local ip=require('luci.sys').exec('/usr/bin/curl --noproxy "" --socks5-hostname 127.0.0.1:'..(sb+i)..' -fsS --connect-timeout 3 --max-time 7 https://api.ipify.org 2>/dev/null'):match('^%s*([%d%.]+)%s*$')
- result.exit_ip=ip;result.exit_ok=ip~=nil
- h.header('Cache-Control','no-store');h.prepare_content('application/json');h.write(j.stringify(result))
+ local id=require('luci.http').formvalue('id') or ''
+ if not id:match('^%d+$') or #id>3 then require('luci.http').status(400,'Bad Request');return end
+ feature_json('probe',id)
 end
 
 local function device_request(mode)
@@ -47,7 +53,7 @@ local function device_request(mode)
  if not d.test_post_security() then return end
  local raw=h.formvalue('payload') or ''
  h.header('Cache-Control','no-store');h.prepare_content('application/json')
- if #raw>4096 then h.status(400,'Bad Request');h.write('{"error":"request too large"}');return end
+ if #raw>32768 then h.status(400,'Bad Request');h.write('{"error":"request too large"}');return end
  local p=j.parse(raw)
  if type(p)~='table' then h.status(400,'Bad Request');h.write('{"error":"请求格式无效"}');return end
  local rand=io.open('/dev/urandom','rb');local bytes=rand:read(16);rand:close()
@@ -55,7 +61,8 @@ local function device_request(mode)
  local fd=io.open(path,'w')
  if not fd then h.status(500,'Internal Server Error');h.write('{"error":"无法创建安全请求文件"}');return end
  require('nixio.fs').chmod(path,'600');fd:write(j.stringify(p));fd:close()
- local backend=(mode=='edit-preview' or mode=='edit-apply') and 'device-operation.rb' or 'device-manager.rb'
+ local feature_modes={ack=true,check_update=true,upgrade=true,restore_release=true}
+ local backend=feature_modes[mode] and 'feature-api.rb' or ((mode=='edit-preview' or mode=='edit-apply') and 'device-operation.rb' or 'device-manager.rb')
  local commandmode=mode=='edit-preview' and 'preview' or mode=='edit-apply' and 'apply' or mode
  local output=require('luci.sys').exec('/usr/bin/ruby /etc/phone-dns/'..backend..' '..commandmode..' '..require('luci.util').shellquote(path)..' 2>/dev/null')
  require('nixio.fs').remove(path)
@@ -101,3 +108,17 @@ end
 
 function device_edit_preview() device_request('edit-preview') end
 function device_edit_apply() device_request('edit-apply') end
+
+function feature_asset()
+ local h=require('luci.http');h.header('Cache-Control','no-store');h.prepare_content('text/javascript; charset=utf-8')
+ h.write(require('nixio.fs').readfile('/usr/share/phone-panel/router/luci/resources/features.js') or '')
+end
+function feature_candidates() feature_json('candidates') end
+function feature_versions() feature_json('versions') end
+function feature_health() feature_json('health',require('luci.http').formvalue('id') or '') end
+function bulk_preview() device_request('batch-preview') end
+function bulk_apply() device_request('batch-apply') end
+function feature_ack() device_request('ack') end
+function feature_check_update() device_request('check_update') end
+function feature_upgrade() device_request('upgrade') end
+function feature_restore() device_request('restore_release') end

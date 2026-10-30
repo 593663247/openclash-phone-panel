@@ -1,4 +1,5 @@
 require_relative 'settings'
+require_relative 'panel-store'
 def ip_elements(ips)
  a=ips.map{|ip|ip.split('.').map(&:to_i).inject(0){|n,v|n*256+v}}.uniq.sort
  ranges=[];a.each{|n|if ranges.last && ranges.last[1]+1==n; ranges.last[1]=n;else;ranges<<[n,n];end}
@@ -6,7 +7,7 @@ def ip_elements(ips)
  ranges.map{|x,y|x==y ? fmt.call(x) : fmt.call(x)+'-'+fmt.call(y)}.join(', ')
 end
 require 'yaml'
-BASE='/etc/phone-dns'
+BASE=PanelStore.path('/etc/phone-dns')
 JOBS=BASE+'/jobs'
 def json(x)
  case x
@@ -16,7 +17,7 @@ def json(x)
  when TrueClass;'true';when FalseClass;'false';when NilClass;'null';else;x.to_s;end
 end
 def atomic(path,data)
- t=path+'.panel-tmp';File.open(t,'w',0600){|f|f.write(data)};File.rename(t,path)
+ t=path+'.panel-tmp';File.open(t,'wb',0600){|f|f.write(data)};File.rename(t,path)
 end
 def run(*args)
  o=IO.popen(args+[{err:[:child,:out]}],&:read);raise "命令执行失败：#{args.first}" unless $?.success?;o
@@ -29,11 +30,13 @@ def source_path
  raise '当前配置路径不在 OpenClash 配置目录中' unless p.start_with?('/etc/openclash/config/') && p.end_with?('.yaml') && !p.include?('..')
  p
 end
+def router_path(path);PanelStore.path(path);end
+
 def tracked
- [source_path,'/etc/config/dhcp',BASE+'/mapping.yaml',BASE+'/devices.yaml','/etc/nftables.d/90-phone-fixed-egress.nft',BASE+'/config.json',BASE+'/listeners.yaml']+Dir.glob(BASE+'/group-*.conf')
+ [source_path,router_path('/etc/config/dhcp'),BASE+'/mapping.yaml',BASE+'/devices.yaml',router_path('/etc/nftables.d/90-phone-fixed-egress.nft'),BASE+'/config.json',BASE+'/listeners.yaml']+Dir.glob(BASE+'/group-*.conf')
 end
 def revision_data
- s=PhoneSettings.values.to_yaml+"\0"+(File.exist?('/etc/config/phone_panel') ? File.read('/etc/config/phone_panel') : '')+"\0"+tracked.map{|p|p+"\0"+(File.exist?(p) ? File.read(p) : '')}.join("\0")
+ s=PhoneSettings.values.to_yaml+"\0"+(File.exist?(router_path('/etc/config/phone_panel')) ? File.read(router_path('/etc/config/phone_panel')) : '')+"\0"+tracked.map{|p|p+"\0"+(File.exist?(p) ? File.read(p) : '')}.join("\0")
  s
 end
 
@@ -74,7 +77,7 @@ def catalog
  mapping
 end
 def active_dhcp_leases
- PhoneSettings.active_leases(File.readlines('/tmp/dhcp.leases'))
+ PhoneSettings.active_leases(File.readlines(router_path('/tmp/dhcp.leases')))
 rescue Errno::ENOENT
  []
 end
@@ -115,6 +118,19 @@ def plan(req)
  d.merge('node'=>g['node'],'dns_port'=>g['dns_port'],'adopt_lease'=>adopt,'revision'=>revision,
  'warning'=>'可选择全部手机节点，缺少的独立 DNS 分组会在应用时创建；应用会重载防火墙并短暂重启 OpenClash。请确保手机使用固定的 Wi-Fi MAC，地址未被静态配置的离线设备占用。')
 end
+def batch_plan(req)
+ rows=req.is_a?(Hash) ? req['devices'] : nil
+ raise '每批请选择 1～32 台设备' unless rows.is_a?(Array) && (1..32).include?(rows.size)
+ normalized=rows.map{|row|valid_input(row)}
+ raise '批量设备中有重复 IP 或 MAC' unless normalized.map{|d|d['ip']}.uniq.size==rows.size && normalized.map{|d|d['mac']}.uniq.size==rows.size
+ plans=normalized.each_with_index.map do |row,index|
+  begin;plan(row);rescue=>e;raise "第 #{index+1} 台：#{e.message}";end
+ end
+ rev=plans.first['revision']
+ raise '预览期间配置有变化，请重试' unless plans.all?{|p|p['revision']==rev}
+ {'devices'=>plans,'revision'=>rev,'batch'=>true,'warning'=>'统一备份、校验和应用；整批只重启一次代理。请核对固定 MAC 与 IP，应用期间会短暂中断代理网络。'}
+end
+
 def nft_text(mapping,hs)
  ips=mapping.flat_map{|g|g['ips']}.uniq.sort_by{|ip|ip.split('.').map(&:to_i)}
  macs=ips.flat_map{|ip|h=hs.find{|x|x['ip']==ip};raise "缺少 #{ip} 的静态租约 MAC" unless h;h.fetch('mac','').downcase.split}.uniq
@@ -127,32 +143,38 @@ def nft_text(mapping,hs)
  s+"}\n"
 end
 def jobwrite(id,data)
- atomic(JOBS+'/'+id+'.yaml',data.to_yaml)
+ atomic(JOBS+'/'+id+'.yaml',json(data))
 end
 def apply_worker(id)
  job=YAML.load_file(JOBS+'/'+id+'.yaml');backup=nil;snaps={}
- lock=File.open('/var/lock/phone-panel.lock','w',0600)
+ lock=File.open(router_path('/var/lock/phone-panel.lock'),'w',0600)
   raise '另一个设备变更正在应用，请稍后重试' unless lock.flock(File::LOCK_EX|File::LOCK_NB)
-  req=job['request'];p=plan(req);raise '配置已发生变化，请重新预览后应用' unless req['revision']==p['revision']
+  req=job['request'];checked=req['batch'] ? batch_plan(req) : plan(req);plans=req['batch'] ? checked['devices'] : [checked];raise '配置已发生变化，请重新预览后应用' unless req['revision']==checked['revision']
   tracked.each{|f|snaps[f]=File.exist?(f) ? File.binread(f) : nil}
-  backup='/root/phone-panel-changes';Dir.mkdir(backup,0700) unless Dir.exist?(backup);backup+='/'+id;Dir.mkdir(backup,0700)
+  backup=router_path('/root/phone-panel-changes');Dir.mkdir(backup,0700) unless Dir.exist?(backup);backup+='/'+id;Dir.mkdir(backup,0700)
   snaps.each_with_index{|(f,s),i|File.write(backup+"/file-#{i}",s) if s}
   File.write(backup+'/manifest.yaml',snaps.keys.to_yaml)
   jobwrite(id,{'status'=>'running','message'=>'正在更新并检查配置','backup'=>backup})
-  cfg=source_path;a=YAML.load_file(cfg,aliases:true);mapping=catalog;mapping.find{|g|g['id']==p['group']}['ips']<<p['ip']
-  idx=a['rules'].index{|r|!r.start_with?('SRC-IP-CIDR,')}||0
-  a['rules'].insert(idx,"SRC-IP-CIDR,#{p['ip']}/32,#{p['node']}") unless a['rules'].include?("SRC-IP-CIDR,#{p['ip']}/32,#{p['node']}")
-  unless p['adopt_lease']
-   sec=PhoneSettings.lease_section('phone_panel',p['ip'])
-   raise 'DHCP 配置段名称冲突' unless quiet('uci','-q','get','dhcp.'+sec).empty?
-   run('uci','set',"dhcp.#{sec}=host")
-   {'mac'=>p['mac'],'ip'=>p['ip'],'name'=>'phone-'+p['ip'].split('.').last}.each{|k,v|run('uci','set',"dhcp.#{sec}.#{k}=#{v}")}
-   run('uci','commit','dhcp')
-  end
+  cfg=source_path;a=YAML.load_file(cfg,aliases:true);mapping=catalog
   devices=File.exist?(BASE+'/devices.yaml') ? (YAML.load_file(BASE+'/devices.yaml') || []) : []
-  devices<<p.select{|k,v|%w[name ip mac group].include?(k)}
+  changed_dhcp=false
+  plans.each do |p|
+   mapping.find{|g|g['id']==p['group']}['ips']<<p['ip']
+   idx=a['rules'].index{|r|!r.start_with?('SRC-IP-CIDR,')}||0
+   rule="SRC-IP-CIDR,#{p['ip']}/32,#{p['node']}"
+   a['rules'].insert(idx,rule) unless a['rules'].include?(rule)
+   unless p['adopt_lease']
+    sec=PhoneSettings.lease_section('phone_panel',p['ip'])
+    raise 'DHCP 配置段名称冲突' unless quiet('uci','-q','get','dhcp.'+sec).empty?
+    run('uci','set',"dhcp.#{sec}=host")
+    {'mac'=>p['mac'],'ip'=>p['ip'],'name'=>'phone-'+p['ip'].tr('.','-')}.each{|k,v|run('uci','set',"dhcp.#{sec}.#{k}=#{v}")}
+    changed_dhcp=true
+   end
+   devices<<p.select{|k,v|%w[name ip mac group].include?(k)}
+  end
+  run('uci','commit','dhcp') if changed_dhcp
   atomic(cfg,a.to_yaml);atomic(BASE+'/mapping.yaml',mapping.to_yaml);atomic(BASE+'/devices.yaml',devices.to_yaml)
-  atomic('/etc/nftables.d/90-phone-fixed-egress.nft',nft_text(mapping,hosts))
+  atomic(router_path('/etc/nftables.d/90-phone-fixed-egress.nft'),nft_text(mapping,hosts))
   run('/etc/openclash/clash','-t','-d','/etc/openclash','-f',cfg)
   run('/usr/bin/ruby',BASE+'/render-dns.rb')
   run('/usr/bin/sing-box','check','-c',BASE+'/config.json')
@@ -160,7 +182,7 @@ def apply_worker(id)
   jobwrite(id,{'status'=>'running','message'=>'检查通过，正在应用网络配置','backup'=>backup})
   run('/etc/init.d/firewall','reload')
   run('/etc/init.d/openclash','stop')
-  File.rename('/tmp/openclash.change','/tmp/phone-panel-quickstart-'+id) if File.exist?('/tmp/openclash.change')
+  File.rename(router_path('/tmp/openclash.change'),router_path('/tmp/phone-panel-quickstart-'+id)) if File.exist?(router_path('/tmp/openclash.change'))
   run('/etc/init.d/openclash','start')
   run('/etc/init.d/phone-dns','restart')
   run('/etc/init.d/dnsmasq','reload')
@@ -169,12 +191,15 @@ def apply_worker(id)
    break unless quiet('pidof','clash').strip.empty?
    sleep 1
   end
-  r=YAML.load_file('/etc/openclash/'+File.basename(cfg),aliases:true)
-  raise '运行绑定规则未生效' unless r['rules'].include?("SRC-IP-CIDR,#{p['ip']}/32,#{p['node']}")
-  raise '嗅探来源排除未同步' unless r.dig('sniffer','skip-src-address').to_a.include?(p['ip']+'/32')
-  raise 'DNS 防火墙规则未同步' unless quiet('nft','list','chain','inet','fw4','codex_phone_dns').include?(p['ip'])
-  raise '固定出口保护未同步' unless run('nft','get','element','inet','fw4','codex_phone4','{',p['ip'],'}')
-  jobwrite(id,{'status'=>'done','message'=>'设备已添加，绑定、DNS 与防直连配置已同步。请让手机重新连接 Wi-Fi，并手动检测该组 DNS / 出口。','device'=>p.select{|k,v|%w[name ip mac group node].include?(k)},'backup'=>backup})
+  r=YAML.load_file(router_path('/etc/openclash/'+File.basename(cfg)),aliases:true)
+  plans.each do |p|
+   raise '运行绑定规则未生效' unless r['rules'].include?("SRC-IP-CIDR,#{p['ip']}/32,#{p['node']}")
+   raise '嗅探来源排除未同步' unless r.dig('sniffer','skip-src-address').to_a.include?(p['ip']+'/32')
+   raise 'DNS 防火墙规则未同步' unless quiet('nft','list','chain','inet','fw4','codex_phone_dns').include?(p['ip'])
+   run('nft','get','element','inet','fw4','codex_phone4','{',p['ip'],'}')
+  end
+  jobwrite(id,{'status'=>'done','message'=>"#{plans.size} 台设备已添加，绑定、DNS 与防直连已同步。请重新连接 Wi-Fi 并检测对应分组。",'devices'=>plans.map{|p|p.select{|k,v|%w[name ip mac group node].include?(k)}},'backup'=>backup})
+
 rescue =>e
  recovered=false
  if backup && !snaps.empty?
@@ -182,7 +207,7 @@ rescue =>e
    snaps.each{|f,s|s ? atomic(f,s) : (File.delete(f) if File.exist?(f))}
    (Dir.glob(BASE+'/group-*.conf')-snaps.keys).each{|f|File.delete(f)}
    quiet('uci','revert','dhcp');run('fw4','check');run('/etc/init.d/firewall','reload');run('/etc/init.d/openclash','stop')
-   File.delete('/tmp/openclash.change') if File.exist?('/tmp/openclash.change')
+   File.delete(router_path('/tmp/openclash.change')) if File.exist?(router_path('/tmp/openclash.change'))
    run('/etc/init.d/openclash','start');run('/etc/init.d/phone-dns','restart');run('/etc/init.d/dnsmasq','reload');recovered=true
   rescue;end
  end
@@ -199,10 +224,10 @@ begin
   id=ARGV.shift;raise '任务 ID 无效' unless id.to_s.match?(/\A\d{14}-[a-f0-9]{12}\z/)
   p=YAML.load_file(JOBS+'/'+id+'.yaml');p.delete('request');puts json(p);exit
  end
- input=YAML.safe_load(File.read(ARGV.fetch(0)),aliases:false);p=plan(input)
- if mode=='preview'
+ input=YAML.safe_load(File.read(ARGV.fetch(0)),aliases:false);p=%w[batch-preview batch-apply].include?(mode) ? batch_plan(input) : plan(input)
+ if %w[preview batch-preview].include?(mode)
   puts json({'ok'=>true,'plan'=>p})
- elsif mode=='apply'
+ elsif %w[apply batch-apply].include?(mode)
   raise '请先预览配置' unless input['revision']==p['revision']
   Dir.mkdir(JOBS,0700) unless Dir.exist?(JOBS)
   id=Time.now.strftime('%Y%m%d%H%M%S')+'-'+File.binread('/dev/urandom',6).unpack1('H*')

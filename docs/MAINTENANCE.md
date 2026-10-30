@@ -54,3 +54,7 @@ Doctor checks dependencies and settings, not occupied ports, policy routing, hoo
 管理页依赖 `/usr/share/phone-panel` 中的维护运行时；安装和升级会暂存 router/scripts 源码，备份也包含该目录。已有安装更新程序文件即可使用本轮界面修复；只有设置或生成网络配置需要改变时才执行 initialize。
 
 Dashboard jobs use the maintenance runtime under `/usr/share/phone-panel`. Installation and upgrade stage router/scripts sources, and snapshots include that runtime. Updating code alone does not require network initialization when settings and generated networking remain unchanged.
+
+## 监测与程序版本恢复
+
+参见 [FEATURES.zh-CN.md](FEATURES.zh-CN.md)。升级会更新并重启独立监测服务，监测只新增自己的计数表，不更改业务规则；原 OpenClash/DNS 服务继续运行。网页程序恢复保留现有设备配置，完整文件合并恢复仍是维护命令的单独操作。

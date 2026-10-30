@@ -14,7 +14,7 @@ backup() (
  source_config
  B=/root/phone-panel-maintenance/$(date +%Y%m%d%H%M%S)-$$
  umask 077; mkdir -p "$B"
- for P in usr/share/phone-panel "${CFG#/}" etc/openclash/custom/phone-routing.sh etc/openclash/custom/openclash_custom_overwrite.sh etc/openclash/custom/openclash_custom_firewall_rules.sh etc/phone-dns etc/config/phone_panel etc/config/dhcp etc/nftables.d/90-phone-fixed-egress.nft etc/init.d/phone-dns usr/lib/lua/luci/controller/phone_panel.lua usr/lib/lua/luci/view/phone_panel.htm usr/lib/lua/luci/model/cbi/phone_panel_settings.lua; do
+ for P in usr/share/phone-panel "${CFG#/}" etc/openclash/custom/phone-routing.sh etc/openclash/custom/openclash_custom_overwrite.sh etc/openclash/custom/openclash_custom_firewall_rules.sh etc/phone-dns etc/config/phone_panel etc/config/dhcp etc/nftables.d/90-phone-fixed-egress.nft etc/init.d/phone-dns etc/init.d/phone-panel-monitor usr/lib/lua/luci/controller/phone_panel.lua usr/lib/lua/luci/view/phone_panel.htm usr/lib/lua/luci/model/cbi/phone_panel_settings.lua; do
   if [ -e "/$P" ]; then mkdir -p "$B/$(dirname "$P")"; cp -a "/$P" "$B/$P"; fi
  done
  printf '%s\n' "$CFG" > "$B/source-path"
@@ -38,15 +38,19 @@ case "$ACTION" in
   /etc/init.d/openclash stop
   /etc/init.d/firewall reload
   /etc/init.d/openclash start
+  /etc/init.d/phone-panel-monitor enable
+  /etc/init.d/phone-panel-monitor restart
   ;;
  upgrade)
   sh "$0" doctor
   B=$(backup); echo "Recovery snapshot: $B"
   [ -d /etc/phone-dns ] || exit 1
-  cp "$ROOT"/router/phone-dns/*.rb /etc/phone-dns/
+  cp "$ROOT"/router/phone-dns/*.rb "$ROOT"/router/phone-dns/*.lua /etc/phone-dns/
   cp "$ROOT/router/phone-dns/status.rb" /etc/phone-dns/panel-status.rb
   cp "$ROOT/router/phone-dns/phone-dns.init" /etc/init.d/phone-dns
   chmod 755 /etc/init.d/phone-dns
+  cp "$ROOT/router/phone-dns/phone-panel-monitor.init" /etc/init.d/phone-panel-monitor
+  chmod 755 /etc/init.d/phone-panel-monitor
   cp "$ROOT/router/openclash/phone-routing.sh" /etc/openclash/custom/phone-routing.sh
   chmod 755 /etc/openclash/custom/phone-routing.sh
   cp "$ROOT/router/luci/controller/phone_panel.lua" /usr/lib/lua/luci/controller/
@@ -70,6 +74,7 @@ case "$ACTION" in
   [ -d "$B/etc/phone-dns" ] || exit 1
   [ "${3:-}" = --apply ] || { echo 'Use restore SNAPSHOT --apply; services will be stopped; reactivate manually after checking'; exit 2; }
   backup
+  [ ! -x /etc/init.d/phone-panel-monitor ] || /etc/init.d/phone-panel-monitor stop
   /etc/init.d/phone-dns stop
   /etc/init.d/openclash stop
   cp -a "$B/etc/." /etc/
@@ -79,6 +84,7 @@ case "$ACTION" in
  uninstall)
   [ "${2:-}" = --disable ] || { echo 'Use uninstall --disable; first remove project hooks as documented'; exit 2; }
   backup
+  if [ -x /etc/init.d/phone-panel-monitor ]; then /etc/init.d/phone-panel-monitor stop; /etc/init.d/phone-panel-monitor disable; fi
   /etc/init.d/phone-dns stop; /etc/init.d/phone-dns disable
   echo 'Service disabled, private state retained. Remove project hooks and restore preinstallation firewall/DHCP backups per INSTALL.md. No files or protection rules silently deleted.'
   ;;

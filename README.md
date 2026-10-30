@@ -9,6 +9,8 @@
 
 ## 功能
 
+新增设备在线依据、出口 IP 变化提醒、搜索/地区/异常筛选、健康历史、独立 IPv4 流量统计、DHCP 批量添加、逐层诊断和 CI 门控的版本升级/程序恢复。见 [完整功能说明](docs/FEATURES.zh-CN.md)。
+
 - 在已有 LuCI 登录保护内显示设备、节点、DNS 监听与连接计数；每 15 秒刷新状态。
 - 从活动 OpenClash 源配置读取 `手机-` 开头的代理节点。
 - 识别规则顶部的 `SRC-IP-CIDR,<IPv4>/32,<手机节点>`，匹配唯一静态/当前 DHCP 租约并自动导入。
@@ -70,7 +72,8 @@ ruby tests/test-settings.rb
 ruby tests/test-device-plan.rb
 ruby tests/test-device-edit.rb
 python3 tests/test-maintenance.py
-node tests/test-preview.cjs
+npm ci --ignore-scripts
+npm test
 python3 scripts/privacy_check.py
 find router tests -name '*.rb' -exec ruby -c {} \;
 sh -n scripts/install.sh

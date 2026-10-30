@@ -11,4 +11,8 @@ local fields={
  {'upstream_primary','主 DoH IPv4 / Primary','ip4addr'}, {'upstream_secondary','备 DoH IPv4 / Secondary','ip4addr'},
  {'tls_name','DoH TLS 主机名 / TLS name','hostname'}, {'fwmark','TPROXY 标记 / Mark','string'}}
 for _,f in ipairs(fields) do local o=s:option(Value,f[1],f[2]);o.datatype=f[3];o.rmempty=false end
+local monitor=s:option(Flag,'monitor_enabled','启用在线、流量与健康监测');monitor.default='1';monitor.rmempty=false
+local limits={{'sample_interval','监测采样间隔（秒）','range(5,300)'},{'probe_interval','每组健康检测最小间隔（秒）','range(60,86400)'},{'traffic_daily_mb','单设备当天流量提醒阈值（MiB）','range(1,1048576)'},{'traffic_rate_mbps','单设备速率提醒阈值（Mbps）','range(1,100000)'}}
+local defaults={sample_interval='15',probe_interval='900',traffic_daily_mb='10240',traffic_rate_mbps='50'}
+for _,f in ipairs(limits) do local o=s:option(Value,f[1],f[2]);o.datatype=f[3];o.default=defaults[f[1]];o.rmempty=false end
 return m

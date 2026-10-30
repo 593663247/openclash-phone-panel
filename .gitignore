@@ -19,3 +19,4 @@ listeners.yaml
 import-status.yaml
 config.json
 jobs/
+node_modules/

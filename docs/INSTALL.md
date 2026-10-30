@@ -135,3 +135,16 @@ Job snapshots under `/root/phone-panel-changes/<job>/` use `manifest.yaml` and o
 见 [MAINTENANCE.md](MAINTENANCE.md) 与 [CHANGELOG.md](../CHANGELOG.md)。备份包含活动 OpenClash 源配置、两处自定义钩子和路由集成脚本。恢复前会再做快照；恢复的是所选快照文件，不会自动启动服务，也不删除快照中不存在的额外文件。恢复后必须人工核对生成文件与运行态。
 
 Backups include the active source YAML, both custom hooks and routing script. Restore makes another snapshot first, restores the selected snapshot, and leaves services stopped. It merges saved files and does not remove extra files absent from the snapshot; inspect generated files and runtime state manually.
+
+## 新版监测服务与版本标记
+
+代码暂存后，完成本说明的网络激活流程，再启用独立监测服务：
+
+```sh
+/etc/init.d/phone-panel-monitor enable
+/etc/init.d/phone-panel-monitor start
+```
+
+`maintenance.sh initialize --apply` 会一并启动监测。通过版本管理或 `releases.rb install-local SOURCE FULL_SHA` 安装时自动写入部署提交并启动监测；仅手动复制源码无法推断其精确版本，版本页会拒绝未知来源的自动升级，需先核对实际来源的完整 Git 提交。
+
+After staging and networking activation, enable/start the separate monitor service as above. Managed installation writes the exact source commit. A manually copied source tree without a verified commit marker cannot use automatic upgrades; identify its actual full Git SHA first.

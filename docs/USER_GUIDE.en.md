@@ -78,3 +78,7 @@ The current tab stores the pending job ID in session storage and resumes polling
 ## 8. Maintenance page
 
 The separate maintenance page preserves initialization previews, allowlisted maintenance jobs and managed device editing. It does not accept arbitrary shell commands. Editing fields or changing the node catalog invalidates edit previews. Hook repair refuses unmarked legacy integration rather than replacing it.
+
+## 9. Observability and batch/version management
+
+See [feature guide](FEATURES.zh-CN.md) for presence evidence, exit changes, filtering, health/traffic history, DHCP batch addition, diagnostics and program recovery. Accounting begins when enabled. Neither egress switching nor software upgrades run automatically.

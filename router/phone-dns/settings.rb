@@ -2,7 +2,8 @@ require 'yaml'
 module PhoneSettings
  DEFAULTS={'lan_cidr'=>'192.168.1.0/24','router_ip'=>'192.168.1.1','bridge'=>'br-lan','node_prefix'=>'手机-',
  'dns_base'=>'15300','socks_base'=>'18000','internal_base'=>'15400','max_groups'=>'100','controller_port'=>'9090',
- 'upstream_primary'=>'8.8.8.8','upstream_secondary'=>'8.8.4.4','tls_name'=>'dns.google','fwmark'=>'0x162'}
+ 'upstream_primary'=>'8.8.8.8','upstream_secondary'=>'8.8.4.4','tls_name'=>'dns.google','fwmark'=>'0x162',
+ 'monitor_enabled'=>'1','sample_interval'=>'15','probe_interval'=>'900','traffic_daily_mb'=>'10240','traffic_rate_mbps'=>'50'}
  def self.ipnum(ip)
   a=ip.to_s.split('.');raise 'Invalid IPv4 address' unless a.size==4 && a.all?{|x|x.match?(/\A(?:0|[1-9][0-9]{0,2})\z/) && x.to_i<=255}
   a.inject(0){|n,x|(n<<8)+x.to_i}
@@ -21,6 +22,10 @@ module PhoneSettings
   %w[upstream_primary upstream_secondary].each{|k|ipnum(v[k])}
   raise 'Invalid TLS name' unless v['tls_name'].match?(/\A[a-zA-Z0-9](?:[a-zA-Z0-9.-]{0,251}[a-zA-Z0-9])?\z/)
   raise 'Invalid fwmark' unless v['fwmark'].match?(/\A0x[0-9a-fA-F]{1,8}\z/)
+  raise 'Invalid monitoring flag' unless %w[0 1].include?(v['monitor_enabled'])
+  {'sample_interval'=>5..300,'probe_interval'=>60..86400,'traffic_daily_mb'=>1..1048576,'traffic_rate_mbps'=>1..100000}.each do |key,range|
+   raise "Invalid #{key}" unless v[key].match?(/\A[1-9][0-9]*\z/) && range.include?(v[key].to_i)
+  end
   v
  end
  def self.values

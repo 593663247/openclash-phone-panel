@@ -45,6 +45,12 @@ begin
  @leases=[['0','02:11:22:33:44:66',request['ip'],'active']]
  rejects('租给了其他设备'){plan(request)}
  @leases=[]
+ second=request.merge('ip'=>'192.168.1.102','mac'=>'02:11:22:33:44:66','name'=>'Second')
+ batch=batch_plan({'devices'=>[request,second]})
+ raise 'batch plans must share a version' unless batch['devices'].size==2 && batch['batch'] && batch['devices'].all?{|d|d['revision']==batch['revision']}
+ rejects('重复 IP 或 MAC'){batch_plan({'devices'=>[request,request]})}
+ rejects('重复 IP 或 MAC'){batch_plan({'devices'=>[request,second.merge('mac'=>request['mac'])]})}
+ rejects('1～32'){batch_plan({'devices'=>[]})}
  before=revision_data
  PhoneSettings.instance_variable_set(:@values,PhoneSettings.validate('bridge'=>'br-test'))
  raise 'settings must invalidate revision' if revision_data==before

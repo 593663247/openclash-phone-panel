@@ -9,6 +9,8 @@ A LuCI dashboard for device-specific proxy egress, per-node encrypted DNS and Op
 
 ## Features
 
+Includes observed device presence, exit-IP change alerts, search/region/health filters, persistent health history, per-device IPv4 traffic accounting, transactional DHCP batch addition, layered diagnostics, and CI-gated updates with code-only rollback. [Detailed feature guide](docs/FEATURES.zh-CN.md).
+
 - Device/node cards, DNS listener status and connection counters inside existing LuCI authentication; 15-second read-only refresh.
 - Discover proxies named with the literal `手机-` prefix (Chinese for “phone”).
 - Import top-of-list `SRC-IP-CIDR,<IPv4>/32,<phone-proxy>` rules using an unambiguous static or current DHCP lease.
@@ -52,7 +54,8 @@ ruby tests/test-settings.rb
 ruby tests/test-device-plan.rb
 ruby tests/test-device-edit.rb
 python3 tests/test-maintenance.py
-node tests/test-preview.cjs
+npm ci --ignore-scripts
+npm test
 python3 scripts/privacy_check.py
 find router tests -name '*.rb' -exec ruby -c {} \;
 sh -n scripts/install.sh

@@ -1,6 +1,16 @@
 # Changes
 
-## Unreleased — reliability and maintenance
+## Unreleased — device operations and observability
+
+- Add evidence-based online states, persistent last-seen data and region/search/health filtering.
+- Add authenticated exit baseline acknowledgement, 96-entry per-node history, latency and layered diagnostics.
+- Add counter-only IPv4 accounting, per-device rates, daily/monthly totals, thresholds and reboot/reset handling.
+- Add a separate procd monitoring service with bounded, staggered automatic probes and low-frequency flash checkpoints.
+- Add DHCP discovery and batch preview/apply (up to 32), with cross-device conflict checks and one transaction/restart.
+- Add pinned-repository/commit/CI update checks, bounded archive extraction, automatic pre-update snapshots and code-only recovery preserving later device edits.
+- Add real DOM and isolated backend/archive/recovery regression tests.
+
+## Previous reliability and maintenance
 
 - Reconcile deployed home/maintenance pages, allowlisted jobs, hook repair and device editing with repository code; protect edit previews from stale responses.
 - Stage maintenance runtime sources on installation and upgrade so dashboard tasks retain their backend dependencies.
