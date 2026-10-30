@@ -16,3 +16,9 @@ Still required before release:
 Checks performed so far: pure import planner tests, task allow-list/serialization tests, JavaScript/Ruby/shell syntax and publication privacy checks. These do not establish real-router operation, complete rollback or security of unimplemented operations.
 
 本分支为开发版本，不代表所有按钮已完成，不应替换生产安装。设备编辑删除、网页恢复、上传升级、卸载向导、实际UDP诊断以及实机测试仍未完成。严禁把本分支描述为完整免终端版。
+
+## Device editor development increment
+
+Added preview/confirm UI for managed-device display-name editing, node rebinding and explicit deletion from panel protection. DHCP leases are retained. Config revision is rechecked under the shared lock before writes. Four pure transformation tests exercise rebind/delete/rename/unmanaged rejection. These operations still need real-router testing, asynchronous task integration and full runtime recovery validation; they are not production-ready. No new package has been issued for this increment.
+
+新增设备名称编辑、改绑、删除的网页预览/确认流程；删除保留DHCP但明确解除面板保护。新增4个纯转换测试。仍待异步任务接入、实机测试及完整运行态恢复验证，不能作为完整免终端版发布。

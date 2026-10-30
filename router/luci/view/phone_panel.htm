@@ -14,6 +14,7 @@
  <div class="hero"><div><div class="eyebrow">PHONE NETWORK · LOCAL CONSOLE</div><h2>手机出口与独立 DNS</h2><div class="sub"><span id="pp-count">—</span> 台手机 · 全部手机节点 · Google 加密解析<br>添加设备前检查冲突，预览确认后统一应用。</div></div><div class="readonly">● 安全添加 · LuCI 登录保护</div></div>
  <div class="notice"><button id="init-check">检查并预览初始化</button> <button id="init-confirm" hidden>确认初始化（会短暂断网）</button><pre id="init-message" hidden></pre></div>
  <div class="notice"><h3>维护任务中心（开发版）</h3><select id="task-action"><option value="doctor">环境检查</option><option value="backup">创建本地备份</option><option value="initialize">初始化（短暂断网）</option><option value="dependencies">安装缺失依赖</option><option value="repair_hooks">检查并修复钩子</option></select><button id="task-submit">确认并执行</button><button id="task-refresh">刷新任务记录</button><pre id="task-history">尚未读取</pre></div>
+ <div class="notice"><h3>编辑受管设备</h3><input id="edit-ip" placeholder="受管设备 IPv4"><select id="edit-op"><option value="rename">修改显示名称</option><option value="rebind">改绑节点</option><option value="delete">删除并解除保护</option></select><input id="edit-name" placeholder="新名称（重命名时）"><input id="edit-group" type="number" placeholder="目标分组 ID"><button id="edit-preview">预览设备操作</button><button id="edit-apply" hidden>确认应用设备操作</button><pre id="edit-result" hidden></pre></div>
  <div id="pp-error" hidden class="error"></div><div id="pp-pending" hidden class="notice"></div>
  <div class="summary"><div class="metric"><strong id="pp-groups">—</strong><span>DNS 入口监听 / 手机节点</span></div><div class="metric"><strong id="pp-conns">—</strong><span>手机当前连接</span></div><div class="metric"><strong id="pp-guard">—</strong><span>防直连规则</span></div><div class="metric"><strong id="pp-redirect">—</strong><span>分组 DNS 接管规则</span></div></div>
  <section class="notice"><h3>添加绑定设备</h3><p>可选择全部手机节点，新分组在首次应用时自动创建。手机应使用固定 Wi-Fi MAC；请确认 IP 未被离线静态设备占用。</p>
@@ -48,6 +49,10 @@ async function taskHistory(){try{const d=await get('tasks');$('task-history').te
 $('task-refresh').onclick=taskHistory;
 $('task-submit').onclick=async function(){const a=$('task-action').value;if(!window.confirm('确认执行 '+a+'？可能安装依赖或短暂中断代理网络。备份包含敏感数据，仅保存在路由器。'))return;this.disabled=true;try{const r=await fetch(base+'/task_start',{method:'POST',credentials:'same-origin',body:new URLSearchParams({token:token,action:a,confirm:'CONFIRM'})});if(!r.ok)throw Error('HTTP '+r.status);await taskHistory()}catch(e){$('task-history').textContent=e.message}finally{this.disabled=false}};
 taskHistory();setInterval(taskHistory,5000);
+let editPlan=null;
+['edit-ip','edit-op','edit-name','edit-group'].forEach(id=>$(id).oninput=()=>{editPlan=null;$('edit-apply').hidden=true});
+$('edit-preview').onclick=async()=>{const m=$('edit-result');m.hidden=false;try{const p={ip:$('edit-ip').value,operation:$('edit-op').value,name:$('edit-name').value,group:$('edit-group').value};const d=await post('device_preview',p);editPlan=Object.assign(p,{revision:d.revision});m.textContent=JSON.stringify(d.summary,null,2)+'\n'+d.warning;$('edit-apply').hidden=false}catch(e){m.textContent=e.message}};
+$('edit-apply').onclick=async function(){if(!editPlan||!window.confirm('确认执行？删除会解除保护；网络可能短暂中断。'))return;this.disabled=true;try{const d=await post('device_apply',editPlan);$('edit-result').textContent=d.message||d.error;editPlan=null;this.hidden=true;await refresh()}catch(e){$('edit-result').textContent=e.message}finally{this.disabled=false}};
 $('pp-refresh').onclick=refresh;$('pp-all').onclick=async function(){this.disabled=true;try{for(const g of state.groups)await probe(g.id)}finally{this.disabled=false}};refresh();setInterval(refresh,15000);
 })();
 </script>

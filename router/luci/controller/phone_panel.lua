@@ -5,6 +5,8 @@ function index()
  entry({'admin','services','phone_panel','initialize'},post('initialize_panel')).leaf=true
  entry({'admin','services','phone_panel','tasks'},call('panel_tasks')).leaf=true
  entry({'admin','services','phone_panel','task_start'},post('panel_task_start')).leaf=true
+ entry({'admin','services','phone_panel','device_preview'},post('device_edit_preview')).leaf=true
+ entry({'admin','services','phone_panel','device_apply'},post('device_edit_apply')).leaf=true
  p.dependent=true
  p.acl_depends={'luci-app-openclash'}
  entry({'admin','services','phone_panel','status'},call('status')).leaf=true
@@ -51,7 +53,9 @@ local function device_request(mode)
  local fd=io.open(path,'w')
  if not fd then h.status(500,'Internal Server Error');h.write('{"error":"无法创建安全请求文件"}');return end
  require('nixio.fs').chmod(path,'600');fd:write(j.stringify(p));fd:close()
- local output=require('luci.sys').exec('/usr/bin/ruby /etc/phone-dns/device-manager.rb '..mode..' '..require('luci.util').shellquote(path)..' 2>/dev/null')
+ local backend=(mode=='edit-preview' or mode=='edit-apply') and 'device-operation.rb' or 'device-manager.rb'
+ local commandmode=mode=='edit-preview' and 'preview' or mode=='edit-apply' and 'apply' or mode
+ local output=require('luci.sys').exec('/usr/bin/ruby /etc/phone-dns/'..backend..' '..commandmode..' '..require('luci.util').shellquote(path)..' 2>/dev/null')
  require('nixio.fs').remove(path)
  if not j.parse(output) then h.status(500,'Internal Server Error');h.write('{"error":"设备管理服务未返回有效响应"}');return end
  h.write(output)
@@ -92,3 +96,6 @@ function panel_task_start()
  if not allowed[a] or h.formvalue('confirm')~='CONFIRM' then h.status(400,'Bad Request');h.write('{"error":"操作未确认"}');return end
  h.write(require('luci.sys').exec('/usr/bin/ruby /etc/phone-dns/tasks.rb start '..require('luci.util').shellquote(a)..' 2>/dev/null'))
 end
+
+function device_edit_preview() device_request('edit-preview') end
+function device_edit_apply() device_request('edit-apply') end
