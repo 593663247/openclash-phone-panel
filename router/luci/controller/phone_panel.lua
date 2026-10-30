@@ -2,6 +2,9 @@ module('luci.controller.phone_panel', package.seeall)
 function index()
  local p=entry({'admin','services','phone_panel'},template('phone_panel'),'手机出口与 DNS',55)
  entry({'admin','services','phone_panel','settings'},cbi('phone_panel_settings'),'设置 / Settings',60)
+ entry({'admin','services','phone_panel','initialize'},post('initialize_panel')).leaf=true
+ entry({'admin','services','phone_panel','tasks'},call('panel_tasks')).leaf=true
+ entry({'admin','services','phone_panel','task_start'},post('panel_task_start')).leaf=true
  p.dependent=true
  p.acl_depends={'luci-app-openclash'}
  entry({'admin','services','phone_panel','status'},call('status')).leaf=true
@@ -61,4 +64,31 @@ function job_status()
  if not id:match('^%d%d%d%d%d%d%d%d%d%d%d%d%d%d%-%x%x%x%x%x%x%x%x%x%x%x%x$') then h.status(400,'Bad Request');h.write('{"error":"任务 ID 无效"}');return end
  local output=require('luci.sys').exec('/usr/bin/ruby /etc/phone-dns/device-manager.rb job '..require('luci.util').shellquote(id)..' 2>/dev/null')
  h.write(output)
+end
+
+function initialize_panel()
+ local h=require('luci.http');local d=require('luci.dispatcher');local j=require('luci.jsonc')
+ if not d.test_post_security() then return end
+ local s=require('luci.sys')
+ local check=s.exec('sh /usr/share/phone-panel/scripts/maintenance.sh doctor 2>&1; echo CHECK_EXIT:$?')
+ h.header('Cache-Control','no-store');h.prepare_content('application/json')
+ if h.formvalue('confirm')~='INITIALIZE' then
+  h.write(j.stringify({ok=check:match('CHECK_EXIT:0%s*$')~=nil,preview=check,warning='初始化会重启 OpenClash，短暂中断代理网络；请保留本地管理连接。'}));return
+ end
+ if not check:match('CHECK_EXIT:0%s*$') then h.write(j.stringify({error=check}));return end
+ h.write(s.exec('/usr/bin/ruby /etc/phone-dns/tasks.rb start initialize 2>/dev/null'))
+end
+
+function panel_tasks()
+ local h=require('luci.http');h.header('Cache-Control','no-store');h.prepare_content('application/json')
+ h.write(require('luci.sys').exec('/usr/bin/ruby /etc/phone-dns/tasks.rb list 2>/dev/null'))
+end
+function panel_task_start()
+ local h=require('luci.http')
+ if not require('luci.dispatcher').test_post_security() then return end
+ local a=h.formvalue('action') or ''
+ local allowed={doctor=true,backup=true,initialize=true,dependencies=true,repair_hooks=true}
+ h.prepare_content('application/json')
+ if not allowed[a] or h.formvalue('confirm')~='CONFIRM' then h.status(400,'Bad Request');h.write('{"error":"操作未确认"}');return end
+ h.write(require('luci.sys').exec('/usr/bin/ruby /etc/phone-dns/tasks.rb start '..require('luci.util').shellquote(a)..' 2>/dev/null'))
 end
