@@ -192,6 +192,14 @@ module PhoneRelease
   end
   Dir.glob(PanelStore.path('/tmp/luci-indexcache')+'*').each{|p|File.delete(p) if File.file?(p)}
  end
+ def self.stop_monitor_for_restore(id)
+  service=PanelStore.path('/etc/init.d/phone-panel-monitor')
+  return unless File.file?(service)
+  manifest=PanelStore.read(root+'/'+id+'/manifest.yaml',[])
+  previous=manifest.find{|entry|entry['destination']=='/etc/init.d/phone-panel-monitor'}
+  PanelStore.capture(service,'disable') if previous && !previous['present']
+  PanelStore.capture(service,'stop')
+ end
  def self.health_check
   raw=PanelStore.run('/usr/bin/ruby',PanelStore.path('/etc/phone-dns/panel-status.rb'))
   data=YAML.safe_load(raw)
@@ -211,8 +219,7 @@ module PhoneRelease
    record['status']='installed';PanelStore.write(directory+'/record.yaml',record)
    record
   rescue
-   service=PanelStore.path('/etc/init.d/phone-panel-monitor')
-   PanelStore.capture(service,'stop') if activator && File.file?(service)
+   stop_monitor_for_restore(record['id']) if activator
    restore_files(record['id']);atomic_code(marker,previous+"\n",0600)
    activator.call if activator
    record['status']='rolled_back';PanelStore.write(directory+'/record.yaml',record)
@@ -272,7 +279,7 @@ module PhoneRelease
    live_pairs=manifest.filter_map{|e|p=PanelStore.path(e['destination']);[p,e['destination'],e['mode']] if File.file?(p)}
    rescue_record=snapshot(live_pairs,record['from'])
    begin
-    service=PanelStore.path('/etc/init.d/phone-panel-monitor');PanelStore.run(service,'stop') if File.file?(service)
+    stop_monitor_for_restore(id)
     restore_files(id);atomic_code(PanelStore.path('/usr/share/phone-panel/deployed-commit'),record['from']+"\n",0600)
     activate;health_check
     raise 'Network configuration changed' unless hashes(paths)==before
