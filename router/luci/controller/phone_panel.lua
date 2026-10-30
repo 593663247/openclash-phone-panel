@@ -60,7 +60,8 @@ local function device_request(mode)
  local path='/etc/phone-dns/panel-requests/'..bytes:gsub('.',function(c)return string.format('%02x',c:byte())end)..'.json'
  local fd=io.open(path,'w')
  if not fd then h.status(500,'Internal Server Error');h.write('{"error":"无法创建安全请求文件"}');return end
- require('nixio.fs').chmod(path,'600');fd:write(j.stringify(p));fd:close()
+ -- Preserve object/array/null distinctions: Lua's empty table would serialize {} as [].
+ require('nixio.fs').chmod(path,'600');fd:write(raw);fd:close()
  local feature_modes={ack=true,check_update=true,upgrade=true,restore_release=true}
  local backend=feature_modes[mode] and 'feature-api.rb' or ((mode=='edit-preview' or mode=='edit-apply') and 'device-operation.rb' or 'device-manager.rb')
  local commandmode=mode=='edit-preview' and 'preview' or mode=='edit-apply' and 'apply' or mode

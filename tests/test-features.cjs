@@ -29,6 +29,7 @@ async function run(){
   },
   post:async(route,payload)=>{
    calls.push({route,payload});
+   assert.equal(Array.isArray(payload),false,'feature POST payload must retain object shape');
    if(route==='bulk_preview'){
     const result={plan:{devices:payload.devices.map(x=>({...x,node:groups[0].node})),revision:'revision',warning:'Review'}};
     if(delayBulk)return new Promise(resolve=>candidatePreviewResolve=()=>resolve(result));

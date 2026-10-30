@@ -20,7 +20,7 @@ function setup(storage = new Map()) {
     });
     return elements.get(id);
   };
-  vm.runInNewContext(script.replace('})();', 'capture({syncGroups,state,probe});})();'), {
+  vm.runInNewContext(script.replace('})();', 'capture({syncGroups,state,probe,render});})();'), {
     capture(value) { api = value; },
     document: { getElementById: element }, window:{confirm:()=>true}, URLSearchParams, AbortController,
     sessionStorage: { getItem: key => storage.get(key), setItem: (key,value) => storage.set(key,value), removeItem: key => storage.delete(key) },
@@ -138,6 +138,11 @@ async function check() {
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(hanging.element('pp-refresh').disabled,false,'timeout releases refresh lock');
   assert.match(hanging.element('pp-error').textContent,/超时/);
+  const background=setup();
+  background.api.syncGroups([{...group,health:{last:{at:200,dns_ok:true,exit_ok:true,exit_ip:'203.0.113.8',time:'background'}}}]);
+  background.api.state.probes[1]={at:100,dns_ok:false,exit_ok:false,time:'older manual'};
+  background.api.render();
+  assert.match(background.element('pp-grid').innerHTML,/203\.0\.113\.8/,'newer background check replaces stale manual display');
   const edit=setup();
   const editPending=edit.element('edit-preview').onclick();
   edit.element('edit-ip').oninput();
