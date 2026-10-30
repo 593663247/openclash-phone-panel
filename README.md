@@ -18,6 +18,8 @@
 - 为 `手机-` SOCKS5 业务节点自动开启 `udp: true`；DNS 专用本地 SOCKS 入口保持 TCP-only。
 - IP/MAC 防直连集合、53 端口 DNS 接管、嗅探来源排除及可选参考路由脚本。
 
+管理维护页保留线上已有的初始化预览、白名单维护任务和设备编辑功能；维护任务记录留在路由器本地。
+
 ## 快速了解
 
 ```yaml
@@ -42,7 +44,7 @@ LuCI → 服务 → 手机出口与 DNS
 - Ruby 3.1+（需 YAML/Psych）、Lua/nixio、curl、dnsmasq、nft/fw4；代码假定命令在默认路径。
 - 单个可配置 IPv4 LAN（CIDR 参数允许 /8～/30，默认 /24），最多 100 个节点分组；默认节点前缀为 `手机-`，可在设置中修改。更宽网段尚需路由器实测。
 - 自动导入仅识别独立代理项，不支持代理组目标、IPv6 来源规则、跨网段或任意 CIDR。
-- 不自动删除旧设备；删除/重命名仍被使用的节点前必须人工迁移。
+- 管理维护页提供设备改名、改绑和显式删除；删除保留 DHCP 租约并解除该设备面板保护。删除/重命名仍被使用的节点前必须迁移设备。
 - 不保证 TUN、iptables、旁路由、多 VLAN、其他防火墙标记或任意版本兼容。
 - 开启 UDP 不证明上游 UDP 可用；已有连接/监听状态也不是泄漏审计。
 - 客户端私人 DNS、内置 DoH 不受 53 端口接管；默认 fail-closed MAC 规则可能阻断手机外部 IPv6。
@@ -66,6 +68,7 @@ LuCI → 服务 → 手机出口与 DNS
 ruby tests/test-auto-import.rb
 ruby tests/test-settings.rb
 ruby tests/test-device-plan.rb
+ruby tests/test-device-edit.rb
 python3 tests/test-maintenance.py
 node tests/test-preview.cjs
 python3 scripts/privacy_check.py

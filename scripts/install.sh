@@ -35,4 +35,8 @@ cp "$ROOT/router/luci/view/phone_panel.htm" /usr/lib/lua/luci/view/
 cp "$ROOT/router/nftables/90-phone-fixed-egress.nft" /etc/nftables.d/
 cp "$ROOT/router/openclash/phone-routing.sh" /etc/openclash/custom/
 chmod 755 /etc/openclash/custom/phone-routing.sh
+if [ "$ROOT" != /usr/share/phone-panel ]; then
+ mkdir -p /usr/share/phone-panel
+ cp -R "$ROOT/router" "$ROOT/scripts" /usr/share/phone-panel/
+fi
 echo 'Files staged. Do NOT start phone-dns yet. Complete docs/INSTALL.md, including backups, subnet edits, hook integration and validation.'

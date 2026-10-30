@@ -1,4 +1,3 @@
-require 'tmpdir'
 require_relative '../router/phone-dns/device-manager'
 
 # Stub router reads only; exercise the production planner against a temporary YAML.
@@ -15,7 +14,9 @@ def rejects(message)
 end
 
 PhoneSettings.instance_variable_set(:@values,PhoneSettings.validate({}))
-Dir.mktmpdir('phone-panel-plan') do |dir|
+dir=File.join(Dir.pwd,".phone-panel-plan-#{Process.pid}-#{rand(1<<32)}")
+Dir.mkdir(dir,0700)
+begin
  @source=File.join(dir,'source.yaml')
  node='手机-01-示例'
  @mapping=[PhoneSettings.group(1,node)]
@@ -49,5 +50,8 @@ Dir.mktmpdir('phone-panel-plan') do |dir|
  raise 'settings must invalidate revision' if revision_data==before
  nft=nft_text([PhoneSettings.group(1,node,[request['ip']])],[host])
  raise 'guard must use configured bridge' unless nft.include?('iifname "br-test"') && !nft.include?('br-lan')
+ensure
+ File.delete(@source) if @source && File.file?(@source)
+ Dir.rmdir(dir)
 end
 puts 'Device planner conflicts, rule precedence, settings revision and bridge guard PASS'

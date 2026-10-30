@@ -1,4 +1,5 @@
 <%+header%>
+<% local rp=luci.dispatcher.context.requestpath or {}; local maintenance=rp[#rp]=='maintenance' %>
 <style>
 #pp{--ink:#17313d;--muted:#607782;--line:#dce7ea;--mint:#087f73;color:var(--ink);font-family:system-ui,-apple-system,sans-serif;max-width:1250px;margin:0 auto;padding:20px 5px}#pp *{box-sizing:border-box}#pp .hero{background:#142e39;color:#fff;border-radius:18px;padding:27px 30px;display:flex;justify-content:space-between;gap:20px;align-items:center}#pp h2{color:inherit;font-size:27px;margin:5px 0 10px;border:0}#pp .eyebrow{font-size:11px;letter-spacing:2px;color:#78d4c4;font-weight:700}#pp .sub{font-size:13px;line-height:1.7;color:#bfd0d6}#pp .readonly{background:#254650;border:1px solid #45626a;padding:8px 12px;border-radius:25px;white-space:nowrap;font-size:12px}#pp .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}#pp .metric{padding:17px 20px;background:#fff;border:1px solid var(--line);border-radius:12px}#pp .metric strong{display:block;font-size:25px;line-height:1.5}#pp .metric span{font-size:12px;color:var(--muted)}#pp .bar{display:flex;justify-content:space-between;align-items:center;gap:14px;margin:24px 0 13px;flex-wrap:wrap}#pp h3{font-size:17px;margin:0;color:var(--ink)}#pp .time{font-size:12px;color:var(--muted)}#pp button{border:1px solid var(--line);border-radius:8px;background:white;color:var(--ink);padding:8px 12px;font-size:12px;cursor:pointer;box-shadow:none}#pp button:hover{border-color:var(--mint);color:var(--mint)}#pp button:disabled{opacity:.5;cursor:wait}#pp .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}#pp .card{border:1px solid var(--line);border-radius:13px;background:#fff;overflow:hidden}#pp .head{padding:18px;border-bottom:1px solid #edf2f4;display:flex;justify-content:space-between;gap:10px;align-items:center}#pp .node{font-size:15px;font-weight:700}#pp .badge{font-size:11px;border-radius:20px;padding:4px 8px;background:#e6f5ee;color:#146648;white-space:nowrap}#pp .warn{background:#fff2d8;color:#926019}#pp .body{padding:17px 18px}#pp .row{display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:12px}#pp .pp-label{color:var(--muted)}#pp .phones{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:17px}#pp .phone{font-size:12px;background:#f0f5f7;border:1px solid #e3ecef;border-radius:6px;padding:5px 8px}#pp .probe{min-height:45px;padding:10px;border-radius:7px;background:#f5f8f9;font-size:12px;line-height:1.65;margin:14px 0 12px;color:var(--muted)}#pp .probe.ok{background:#eaf7f3;color:#176656}#pp .notice{font-size:12px;line-height:1.8;background:#f1f6f7;border-left:3px solid #68bcae;padding:13px 17px;border-radius:5px;margin:18px 0}#pp .error{color:#a73535;background:#fff0ef;padding:12px;border-radius:8px}#pp pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:290px;overflow:auto;background:#142e39;color:#d8e9ee;padding:18px;border-radius:12px;font-size:11px;line-height:1.8;border:0}#pp .actions{display:flex;gap:8px}#pp .links{font-size:12px;margin-top:18px;color:var(--muted)}#pp a{color:var(--mint)}@media(max-width:1050px){#pp .grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){#pp .grid{grid-template-columns:1fr}#pp .summary{grid-template-columns:repeat(2,1fr)}#pp .hero{padding:22px;align-items:flex-start;flex-direction:column}#pp h2{font-size:23px}}
 
@@ -9,10 +10,20 @@
 #pp .notice label{color:#17313d!important}
 #pp .notice input,#pp .notice select{background:#fff!important;color:#17313d!important;-webkit-text-fill-color:#17313d!important}
 #pp input::placeholder{color:#607782!important;-webkit-text-fill-color:#607782!important;opacity:1}
+#pp.home-page .maintenance-only,#pp.home-page .maintenance-heading{display:none!important}
+#pp.maintenance-page .home-only{display:none!important}
+#pp .maintenance-heading h2{background:transparent!important;color:#17313d!important;-webkit-text-fill-color:#17313d!important}
 </style>
-<div id="pp">
- <div class="hero"><div><div class="eyebrow">PHONE NETWORK · LOCAL CONSOLE</div><h2>手机出口与独立 DNS</h2><div class="sub"><span id="pp-count">—</span> 台手机 · 全部手机节点 · Google 加密解析<br>添加设备前检查冲突，预览确认后统一应用。</div></div><div class="readonly">● 安全添加 · LuCI 登录保护</div></div>
+<div id="pp" class="<%=maintenance and 'maintenance-page' or 'home-page'%>">
+ <div class="maintenance-heading"><h2>管理维护</h2><p>初始化、维护任务和受管设备编辑。</p></div>
+ <div class="hero home-only"><div><div class="eyebrow">PHONE NETWORK · LOCAL CONSOLE</div><h2>手机出口与独立 DNS</h2><div class="sub"><span id="pp-count">—</span> 台手机 · 全部手机节点 · Google 加密解析<br>添加设备前检查冲突，预览确认后统一应用。</div></div><div class="readonly">● 安全添加 · LuCI 登录保护</div></div>
+ <div class="maintenance-only">
+ <div class="notice"><button id="init-check">检查并预览初始化</button> <button id="init-confirm" hidden>确认初始化（会短暂断网）</button><pre id="init-message" hidden></pre></div>
+ <div class="notice"><h3>维护任务中心（开发版）</h3><select id="task-action"><option value="doctor">环境检查</option><option value="backup">创建本地备份</option><option value="initialize">初始化（短暂断网）</option><option value="dependencies">安装缺失依赖</option><option value="repair_hooks">检查并修复钩子</option></select><button id="task-submit">确认并执行</button><button id="task-refresh">刷新任务记录</button><pre id="task-history">尚未读取</pre></div>
+ <div class="notice"><h3>编辑受管设备</h3><input id="edit-ip" placeholder="受管设备 IPv4"><select id="edit-op"><option value="rename">修改显示名称</option><option value="rebind">改绑节点</option><option value="delete">删除并解除保护</option></select><input id="edit-name" placeholder="新名称（重命名时）"><input id="edit-group" type="number" placeholder="目标分组 ID"><button id="edit-preview">预览设备操作</button><button id="edit-apply" hidden>确认应用设备操作</button><pre id="edit-result" hidden></pre></div>
+ </div>
  <div id="pp-error" hidden class="error"></div><div id="pp-pending" hidden class="notice"></div>
+ <div class="home-only">
  <div class="summary"><div class="metric"><strong id="pp-groups">—</strong><span>DNS 入口监听 / 手机节点</span></div><div class="metric"><strong id="pp-conns">—</strong><span>手机当前连接</span></div><div class="metric"><strong id="pp-guard">—</strong><span>防直连规则</span></div><div class="metric"><strong id="pp-redirect">—</strong><span>分组 DNS 接管规则</span></div></div>
  <section class="notice"><h3>添加绑定设备</h3><p>可选择全部手机节点，新分组在首次应用时自动创建。手机应使用固定 Wi-Fi MAC；请确认 IP 未被离线静态设备占用。</p>
  <form id="pp-add"><label>设备名称 <input id="add-name" maxlength="40" required></label> <label>MAC <input id="add-mac" placeholder="02:ab:cd:ef:12:34" required></label> <label>固定 IP <input id="add-ip" placeholder="LAN IPv4" required></label> <label>绑定节点 <select id="add-group" required></select></label> <button id="add-preview" type="submit">检查并预览</button></form>
@@ -22,6 +33,7 @@
  <div class="notice">上游由面板设置配置，使用 DNS-over-HTTPS。状态每 15 秒刷新，链路检测需手动执行。<br>“监听正常”仅表示服务入口存在；点击检测后才显示本次 DNS 与出口结果。DHCP 租约不等于设备当前在线；出口检测成功也不代表全部 UDP 业务正常。手机自带的私人 DNS / 应用内置 DoH 不受 53 端口接管。</div>
  <div class="bar"><h3>这些手机最近的连接警告</h3><span class="time">最多 12 条 · 仅显示时间、受管 IP 与错误分类</span></div><pre id="pp-logs">正在读取…</pre>
  <div class="links"><a href="<%=luci.dispatcher.build_url('admin','services','phone_panel','settings')%>">面板设置 / Settings</a> · 管理入口：<a href="<%=luci.dispatcher.build_url('admin','services','openclash')%>">OpenClash</a> · <a href="<%=luci.dispatcher.build_url('admin','network','dhcp')%>">DHCP / DNS</a>　|　添加设备会短暂重启 OpenClash；现有设备不会自动删除或改绑。</div>
+ </div>
 </div>
 <script>
 (function(){'use strict';
@@ -40,7 +52,7 @@ function syncGroups(groups){
  const old=state.groups,select=$('add-group'),selected=select.value;
  const catalog=g=>JSON.stringify(g.map(x=>[x.id,x.node,x.dns_port,x.socks_port]));
  if(catalog(old)!==catalog(groups)){
-  invalidatePreview();
+  invalidatePreview();invalidateEdit();
   select.innerHTML=groups.map(g=>'<option value="'+esc(g.id)+'">'+esc(g.node)+'</option>').join('');
   select.value=groups.some(g=>String(g.id)===selected)?selected:(groups.length?String(groups[0].id):'');
  }
@@ -49,13 +61,13 @@ function syncGroups(groups){
 }
 async function refresh(){if(state.loading)return;state.loading=true;$('pp-refresh').disabled=true;try{const d=await get('status');syncGroups(d.groups);if(d.settings)$('add-ip').placeholder=d.settings.lan_cidr;const pending=d.pending_imports||[];$('pp-pending').hidden=!pending.length;$('pp-pending').textContent='自动导入待处理：'+pending.map(x=>x.ip+' → '+x.node+'：'+x.reason).join('；');$('pp-count').textContent=d.device_count||d.groups.reduce((n,g)=>n+g.phones.length,0);$('pp-groups').textContent=d.groups.filter(g=>g.dns_listening).length+' / '+d.groups.length;$('pp-conns').textContent=d.connections_available===false?'无法读取':d.groups.reduce((n,g)=>n+g.connections,0);$('pp-guard').textContent=d.guard_ready?'已加载':'需检查';$('pp-redirect').textContent=d.dns_redirect_ready?'已加载':'需检查';$('pp-time').textContent='路由器时间 '+d.time+' · 自动刷新 15 秒';$('pp-logs').textContent=d.logs.length?d.logs.join('\n'):'近期日志中未发现这些手机的连接警告。';$('pp-error').hidden=true;render()}catch(e){$('pp-error').textContent=e.message;$('pp-error').hidden=false}finally{state.loading=false;$('pp-refresh').disabled=false}}
 async function probe(id){if(state.busy.has(id))return;const group=state.groups.find(g=>g.id===id);if(!group)return;const key=groupKey(group),current=()=>state.groups.some(g=>g.id===id&&groupKey(g)===key);state.busy.add(id);render();try{const result=await get('probe?id='+id);if(current())state.probes[id]=result}catch(e){if(current())state.probes[id]={error:e.message}}finally{state.busy.delete(id);render()}}
-let preview=null,applying=false,previewRevision=0;
+let preview=null,applying=false,editing=false,previewRevision=0;
 const token='<%=luci.dispatcher.context.authtoken%>';
 function message(t){$('add-result').hidden=false;$('add-result').textContent=t}
 async function post(action,p){const r=await fetch(base+'/'+action,{method:'POST',credentials:'same-origin',body:new URLSearchParams({token:token,payload:JSON.stringify(p)})});if(!r.ok)throw Error('请求失败 HTTP '+r.status+'，请检查登录状态');const d=await r.json();if(d.error)throw Error(d.error);return d}
 function invalidatePreview(){previewRevision++;preview=null;$('add-apply').hidden=true}
 $('pp-add').oninput=invalidatePreview;$('pp-add').onchange=invalidatePreview;
-$('pp-add').onsubmit=async e=>{e.preventDefault();if(applying)return;invalidatePreview();const revision=previewRevision;$('add-preview').disabled=true;try{const d=await post('preview',{name:$('add-name').value,mac:$('add-mac').value,ip:$('add-ip').value,group:$('add-group').value});if(revision!==previewRevision)return;preview=d.plan;message('设备：'+preview.name+'\nMAC：'+preview.mac+'\nIP：'+preview.ip+'\n节点：'+preview.node+'\nDNS 分组端口：'+preview.dns_port+'\n静态租约：'+(preview.adopt_lease?'复用已有租约':'新建')+'\n同步：来源绑定规则 / 独立 DNS / 防直连 / 嗅探排除\n'+preview.warning);$('add-apply').hidden=false}catch(e){if(revision===previewRevision)message(e.message)}finally{if(!applying)$('add-preview').disabled=false}};
+$('pp-add').onsubmit=async e=>{e.preventDefault();if(applying||editing)return;invalidatePreview();const revision=previewRevision;$('add-preview').disabled=true;try{const d=await post('preview',{name:$('add-name').value,mac:$('add-mac').value,ip:$('add-ip').value,group:$('add-group').value});if(revision!==previewRevision)return;preview=d.plan;message('设备：'+preview.name+'\nMAC：'+preview.mac+'\nIP：'+preview.ip+'\n节点：'+preview.node+'\nDNS 分组端口：'+preview.dns_port+'\n静态租约：'+(preview.adopt_lease?'复用已有租约':'新建')+'\n同步：来源绑定规则 / 独立 DNS / 防直连 / 嗅探排除\n'+preview.warning);$('add-apply').hidden=false}catch(e){if(revision===previewRevision)message(e.message)}finally{if(!applying)$('add-preview').disabled=false}};
 const jobKey='phone-panel-job:'+base;
 function savedJob(){try{return sessionStorage.getItem(jobKey)}catch(e){return null}}
 function storeJob(id){try{if(id)sessionStorage.setItem(jobKey,id);else sessionStorage.removeItem(jobKey)}catch(e){}}
@@ -80,12 +92,24 @@ function watchJob(id){
 }
 $('add-resume').onclick=()=>{const id=savedJob();if(id)watchJob(id)};
 $('add-apply').onclick=async()=>{
- if(!preview||applying)return;
+ if(!preview||applying||editing)return;
  applying=true;$('add-apply').disabled=true;$('add-preview').disabled=true;
  try{const d=await post('apply',preview);storeJob(d.job);message('任务 '+d.job+' 已提交。应用期间请勿关闭路由器电源。');watchJob(d.job)}
  catch(e){message(e.message);applying=false;$('add-apply').disabled=false;$('add-preview').disabled=false}
 };
 const previousJob=savedJob();if(previousJob&&/^\d{14}-[a-f0-9]{12}$/.test(previousJob)){message('正在恢复上次任务：'+previousJob);watchJob(previousJob)}
+async function initRequest(confirm){const r=await fetch(base+'/initialize',{method:'POST',credentials:'same-origin',body:new URLSearchParams({token:token,confirm:confirm||''})});if(!r.ok)throw Error('请求失败 HTTP '+r.status);return r.json()}
+$('init-check').onclick=async()=>{const m=$('init-message');m.hidden=false;$('init-confirm').hidden=true;try{const d=await initRequest('');m.textContent=(d.preview||d.error||'')+'\n'+(d.warning||'');$('init-confirm').hidden=!d.ok}catch(e){m.textContent=e.message}};
+$('init-confirm').onclick=async function(){this.disabled=true;try{const d=await initRequest('INITIALIZE');$('init-message').textContent=d.message||d.error||(d.id?'任务 '+d.id+' 已提交，请在维护任务中心查看':'请检查路由器状态');this.hidden=!!d.ok}catch(e){$('init-message').textContent=e.message}finally{this.disabled=false}};
+async function taskHistory(){try{const d=await get('tasks');$('task-history').textContent=(d.tasks||[]).map(t=>t.id+' | '+t.action+' | '+t.status+' | '+t.message).join('\n')||'暂无任务'}catch(e){$('task-history').textContent=e.message}}
+$('task-refresh').onclick=taskHistory;
+$('task-submit').onclick=async function(){const a=$('task-action').value;if(!window.confirm('确认执行 '+a+'？可能安装依赖或短暂中断代理网络。备份包含敏感数据，仅保存在路由器。'))return;this.disabled=true;try{const r=await fetch(base+'/task_start',{method:'POST',credentials:'same-origin',body:new URLSearchParams({token:token,action:a,confirm:'CONFIRM'})});if(!r.ok)throw Error('HTTP '+r.status);await taskHistory()}catch(e){$('task-history').textContent=e.message}finally{this.disabled=false}};
+if($('pp').classList.contains('maintenance-page')){taskHistory();setInterval(taskHistory,5000);}
+let editPlan=null,editRevision=0;
+function invalidateEdit(){editRevision++;editPlan=null;$('edit-apply').hidden=true}
+['edit-ip','edit-op','edit-name','edit-group'].forEach(id=>{$(id).oninput=invalidateEdit;$(id).onchange=invalidateEdit});
+$('edit-preview').onclick=async()=>{if(applying||editing)return;invalidateEdit();const revision=editRevision,m=$('edit-result');m.hidden=false;$('edit-preview').disabled=true;try{const p={ip:$('edit-ip').value,operation:$('edit-op').value,name:$('edit-name').value,group:$('edit-group').value};const d=await post('device_preview',p);if(revision!==editRevision)return;editPlan=Object.assign(p,{revision:d.revision});m.textContent=JSON.stringify(d.summary,null,2)+'\n'+d.warning;$('edit-apply').hidden=false}catch(e){if(revision===editRevision)m.textContent=e.message}finally{$('edit-preview').disabled=false}};
+$('edit-apply').onclick=async function(){if(!editPlan||applying||editing||!window.confirm('确认执行？改绑或删除可能短暂中断代理网络。'))return;editing=true;this.disabled=true;$('edit-preview').disabled=true;try{const d=await post('device_apply',editPlan);$('edit-result').textContent=d.message||d.error;invalidateEdit();await refresh()}catch(e){$('edit-result').textContent=e.message}finally{editing=false;this.disabled=false;$('edit-preview').disabled=false}};
 $('pp-refresh').onclick=refresh;$('pp-all').onclick=async function(){this.disabled=true;try{for(const g of state.groups)await probe(g.id)}finally{this.disabled=false}};refresh();setInterval(refresh,15000);
 })();
 </script>

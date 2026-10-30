@@ -2,6 +2,9 @@
 
 ## Unreleased — reliability and maintenance
 
+- Reconcile deployed home/maintenance pages, allowlisted jobs, hook repair and device editing with repository code; protect edit previews from stale responses.
+- Stage maintenance runtime sources on installation and upgrade so dashboard tasks retain their backend dependencies.
+
 - Invalidate device previews after edits and catalog changes; ignore obsolete responses.
 - Refresh available nodes without losing a valid selection. Clear obsolete probe results.
 - Bound status requests to 15 seconds. Distinguish controller failure from zero connections.

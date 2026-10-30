@@ -15,14 +15,14 @@ function setup(storage = new Map()) {
   let api;
   const element = id => {
     if (!elements.has(id)) elements.set(id, {
-      hidden: true, disabled: false, value: '', options: [],
+      hidden: true, disabled: false, value: '', options: [], classList: {contains:()=>false},
       querySelectorAll: () => [], reset() {},
     });
     return elements.get(id);
   };
   vm.runInNewContext(script.replace('})();', 'capture({syncGroups,state,probe});})();'), {
     capture(value) { api = value; },
-    document: { getElementById: element }, URLSearchParams, AbortController,
+    document: { getElementById: element }, window:{confirm:()=>true}, URLSearchParams, AbortController,
     sessionStorage: { getItem: key => storage.get(key), setItem: (key,value) => storage.set(key,value), removeItem: key => storage.delete(key) },
     setInterval() {}, setTimeout(callback,delay) { if(delay!==15000)timers.push(callback);else timeouts.push(callback); }, clearTimeout() {},
     fetch(url, options) {
@@ -138,7 +138,21 @@ async function check() {
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(hanging.element('pp-refresh').disabled,false,'timeout releases refresh lock');
   assert.match(hanging.element('pp-error').textContent,/超时/);
-  console.log('PASS: preview invalidation, catalog refresh, stale probes, job recovery and request timeout');
+  const edit=setup();
+  const editPending=edit.element('edit-preview').onclick();
+  edit.element('edit-ip').oninput();
+  edit.requests[0].resolve({ revision:'old',summary:{},warning:'' });
+  await editPending;
+  assert.equal(edit.element('edit-apply').hidden,true,'editing fields invalidates in-flight edit preview');
+  await edit.element('edit-apply').onclick();
+  assert.equal(edit.requests.length,1,'stale edit must not apply');
+  const validEdit=edit.element('edit-preview').onclick();
+  edit.requests[1].resolve({ revision:'current',summary:{operation:'rename'},warning:'Review' });
+  await validEdit;
+  assert.equal(edit.element('edit-apply').hidden,false,'valid edit can confirm');
+  edit.api.syncGroups([group]);
+  assert.equal(edit.element('edit-apply').hidden,true,'catalog changes invalidate device edit preview');
+  console.log('PASS: add/edit previews, catalog refresh, stale probes, job recovery and request timeout');
 }
 
 check().catch(error => { console.error(error); process.exitCode = 1; });

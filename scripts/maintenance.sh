@@ -14,7 +14,7 @@ backup() (
  source_config
  B=/root/phone-panel-maintenance/$(date +%Y%m%d%H%M%S)-$$
  umask 077; mkdir -p "$B"
- for P in "${CFG#/}" etc/openclash/custom/phone-routing.sh etc/openclash/custom/openclash_custom_overwrite.sh etc/openclash/custom/openclash_custom_firewall_rules.sh etc/phone-dns etc/config/phone_panel etc/config/dhcp etc/nftables.d/90-phone-fixed-egress.nft etc/init.d/phone-dns usr/lib/lua/luci/controller/phone_panel.lua usr/lib/lua/luci/view/phone_panel.htm usr/lib/lua/luci/model/cbi/phone_panel_settings.lua; do
+ for P in usr/share/phone-panel "${CFG#/}" etc/openclash/custom/phone-routing.sh etc/openclash/custom/openclash_custom_overwrite.sh etc/openclash/custom/openclash_custom_firewall_rules.sh etc/phone-dns etc/config/phone_panel etc/config/dhcp etc/nftables.d/90-phone-fixed-egress.nft etc/init.d/phone-dns usr/lib/lua/luci/controller/phone_panel.lua usr/lib/lua/luci/view/phone_panel.htm usr/lib/lua/luci/model/cbi/phone_panel_settings.lua; do
   if [ -e "/$P" ]; then mkdir -p "$B/$(dirname "$P")"; cp -a "/$P" "$B/$P"; fi
  done
  printf '%s\n' "$CFG" > "$B/source-path"
@@ -54,6 +54,10 @@ case "$ACTION" in
   mkdir -p /usr/lib/lua/luci/model/cbi
   cp "$ROOT/router/luci/model/cbi/phone_panel_settings.lua" /usr/lib/lua/luci/model/cbi/
   [ -f /etc/config/phone_panel ] || cp "$ROOT/router/config/phone_panel" /etc/config/
+  if [ "$ROOT" != /usr/share/phone-panel ]; then
+   mkdir -p /usr/share/phone-panel
+   cp -R "$ROOT/router" "$ROOT/scripts" /usr/share/phone-panel/
+  fi
   echo 'Upgrade staged, configuration preserved. Run doctor, review hooks, then initialize --apply.'
   ;;
  restore)

@@ -40,7 +40,7 @@ Create a unique static DHCP lease for that device. Follow [Installation](docs/IN
 
 Deployment baseline previously checked: ImmortalWrt 24.10.2, LuCI Lua compatibility layer, fw4/nftables, Mihomo and sing-box 1.12.8. Requires Ruby 3.1+ with YAML/Psych, Lua/nixio, curl and dnsmasq. The sanitized public staging procedure has not been fresh-installed on every platform.
 
-The reference supports one configurable IPv4 LAN (CIDR /8 through /30, default /24), a configurable proxy prefix (default `手机-`), direct proxy targets and at most 100 node groups. It is not validated for TUN, iptables, multiple VLANs, arbitrary firewall marks, IPv6 source rules or policy-group bindings. Existing devices are not automatically deleted. Move devices before removing/renaming their nodes.
+The reference supports one configurable IPv4 LAN (CIDR /8 through /30, default /24), a configurable proxy prefix (default `手机-`), direct proxy targets and at most 100 node groups. It is not validated for TUN, iptables, multiple VLANs, arbitrary firewall marks, IPv6 source rules or policy-group bindings. Maintenance supports explicit rename, rebind and removal. Removal retains DHCP leases and releases panel protection for that device. Move devices before removing/renaming nodes.
 
 UDP enabled is configuration state, not a successful UDP transport test. Listener readiness is not a leak audit. Client Private DNS/application DoH bypass port-53 interception. MAC-based forwarding guards can block external IPv6. File snapshots do not guarantee crash-safe or complete runtime rollback. Review the [User Guide](docs/USER_GUIDE.en.md) before deployment.
 
@@ -50,6 +50,7 @@ UDP enabled is configuration state, not a successful UDP transport test. Listene
 ruby tests/test-auto-import.rb
 ruby tests/test-settings.rb
 ruby tests/test-device-plan.rb
+ruby tests/test-device-edit.rb
 python3 tests/test-maintenance.py
 node tests/test-preview.cjs
 python3 scripts/privacy_check.py

@@ -50,3 +50,7 @@ Backups now include source YAML, custom hooks and routing integration. A pre-res
 `doctor` 验证依赖和设置，不代表已验证端口占用、TPROXY 策略路由、钩子执行或真实网络连通性。恢复仍为文件合并，不自动移除新增文件或恢复服务启用状态。
 
 Doctor checks dependencies and settings, not occupied ports, policy routing, hook execution or connectivity. Restore remains a file merge; it does not delete newly created files or restore service enablement state.
+
+管理页依赖 `/usr/share/phone-panel` 中的维护运行时；安装和升级会暂存 router/scripts 源码，备份也包含该目录。已有安装更新程序文件即可使用本轮界面修复；只有设置或生成网络配置需要改变时才执行 initialize。
+
+Dashboard jobs use the maintenance runtime under `/usr/share/phone-panel`. Installation and upgrade stage router/scripts sources, and snapshots include that runtime. Updating code alone does not require network initialization when settings and generated networking remain unchanged.

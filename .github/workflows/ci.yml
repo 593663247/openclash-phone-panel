@@ -20,6 +20,7 @@ jobs:
           ruby tests/test-auto-import.rb
           ruby tests/test-settings.rb
           ruby tests/test-device-plan.rb
+          ruby tests/test-device-edit.rb
       - name: Shell and Lua syntax
         run: |
           sh -n scripts/install.sh
@@ -27,6 +28,7 @@ jobs:
           sh -n scripts/install-deps.sh
           sh -n router/phone-dns/phone-dns.init
           sh -n router/openclash/phone-routing.sh
+          ruby -c scripts/hooks.rb
           luac5.1 -p router/luci/controller/phone_panel.lua
           luac5.1 -p router/luci/model/cbi/phone_panel_settings.lua
       - name: Publication privacy gate

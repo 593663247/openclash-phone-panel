@@ -42,7 +42,7 @@ A matching existing source rule can be adopted to complete a pending import afte
 
 Edit the existing `/32` rule target in the active source configuration, save and apply. DNS follows the business egress target, not the other way around.
 
-Old devices are not automatically deleted. There is no general-purpose delete action. Migrate devices and inspect mapping/leases/listeners/firewall sets before deleting a source rule or renaming/removing its node. Ambiguous/missing managed rules cause alignment to fail rather than guess.
+Old devices are not automatically deleted. The maintenance page offers explicit rename, rebind and removal previews. Removal releases panel protection while retaining the DHCP lease. Migrate devices and inspect mapping/leases/listeners/firewall sets before deleting a source rule or renaming/removing its node. Ambiguous/missing managed rules cause alignment to fail rather than guess.
 
 Single-device IPv4 /32 rules are supported within one configurable LAN (CIDR parameters /8 through /30, default /24). Wider subnet integration still needs router testing. Policy-group targets, arbitrary CIDRs, IPv6 source addresses and multiple LANs require adaptation. No proxy subscriptions or provider accounts are included.
 
@@ -74,3 +74,7 @@ MAC guards may block external IPv6. Reference routing retains private/local dest
 Form edits or catalog changes invalidate previews. Binding changes clear old probe results. An unavailable controller is shown as unavailable, not zero connections. Status reads have a 15-second timeout.
 
 The current tab stores the pending job ID in session storage and resumes polling after reload. If polling reaches its retry limit, use the resume button; new submissions remain blocked until the job ends. If session storage is disabled, retain the displayed job ID. Warning summaries include only time, managed IP and error category; inspect detailed logs locally on the router.
+
+## 8. Maintenance page
+
+The separate maintenance page preserves initialization previews, allowlisted maintenance jobs and managed device editing. It does not accept arbitrary shell commands. Editing fields or changing the node catalog invalidates edit previews. Hook repair refuses unmarked legacy integration rather than replacing it.
