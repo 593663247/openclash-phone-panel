@@ -1,6 +1,9 @@
 require_relative 'settings'
 # Pure document transformation, separately tested; no DHCP identity is changed.
 module DeviceEdit
+ def self.revision_data(parts,saved_settings='')
+  PhoneSettings.values.to_yaml.b+"\0".b+saved_settings.b+"\0".b+parts.map(&:b).join("\0".b)
+ end
  def self.transform(cfg,mapping,devices,req)
   operation=req.fetch('operation');ip=req.fetch('ip');raise 'Invalid IP' unless PhoneSettings.usable?(ip)
   raise 'Unsupported operation' unless %w[rename rebind delete].include?(operation)

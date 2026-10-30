@@ -1,5 +1,9 @@
 require_relative '../router/phone-dns/device-edit'
 PhoneSettings.instance_variable_set(:@values,PhoneSettings.validate({}))
+binary="手机节点\n".b
+revision=DeviceEdit.revision_data([binary],"节点前缀\n")
+raise 'Unicode/binary fingerprint is unsafe' unless revision.encoding==Encoding::BINARY && revision.include?(binary)
+raise 'Saved settings must invalidate preview' if revision==DeviceEdit.revision_data([binary],'changed')
 def fixture
  cfg={'proxies'=>[{'name'=>'手机-01-示例'},{'name'=>'手机-02-示例'}],
  'rules'=>['SRC-IP-CIDR,192.168.1.101/32,手机-01-示例','MATCH,DIRECT']}
