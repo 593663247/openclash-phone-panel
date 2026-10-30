@@ -1,3 +1,4 @@
+require_relative 'settings'
 require 'yaml'
 def js(x)
  case x
@@ -14,15 +15,15 @@ begin
  p=YAML.load_file('/etc/openclash/'+File.basename(cfgpath),aliases:true)
  source=YAML.load_file(cfgpath,aliases:true)
  id=mapping.map{|g|g['id']}.max.to_i
- (source['proxies']||[]).map{|n|n['name']}.grep(/\A手机[-－]/).uniq.each do |name|
+ (source['proxies']||[]).map{|n|n['name']}.select{|name|PhoneSettings.phone?(name)}.uniq.each do |name|
   next if mapping.any?{|g|g['node']==name}
-  id+=1;mapping<<{'id'=>id,'node'=>name,'ips'=>[],'dns_port'=>15300+id,'socks_port'=>18000+id}
+  id+=1;mapping<<{'id'=>id,'node'=>name,'ips'=>[],'dns_port'=>PhoneSettings.port('dns_base')+id,'socks_port'=>PhoneSettings.port('socks_base')+id}
  end
  sockets=IO.popen(['netstat','-ln'], &:read)
  leases=File.readlines('/tmp/dhcp.leases').map{|l|l.split} rescue []
  connections=[]
  begin
-  raw=IO.popen(['curl','-s','--max-time','2','-H','@-','http://127.0.0.1:9090/connections'],'r+') do |io|
+  raw=IO.popen(['curl','-s','--max-time','2','-H','@-',"http://127.0.0.1:#{PhoneSettings.port('controller_port')}/connections"],'r+') do |io|
    io.write("Authorization: Bearer #{p['secret']}\n");io.close_write;io.read
   end
   connections=YAML.load(raw)['connections']||[]
@@ -42,7 +43,7 @@ begin
  guard=IO.popen(['nft','list','chain','inet','fw4','codex_phone_guard'], &:read)
  lines=File.readlines('/tmp/openclash.log').last(600).select{|l|managed_ips.any?{|ip|l.include?(ip+':')}}.last(12).map{|l|l.strip} rescue []
  imports=File.exist?('/etc/phone-dns/import-status.yaml') ? YAML.load_file('/etc/phone-dns/import-status.yaml') : {}
- result={'pending_imports'=>imports.fetch('pending',[]),'time'=>Time.now.strftime('%Y-%m-%d %H:%M:%S %z'),'groups'=>groups,'dns_redirect_ready'=>nft.include?('15301')&&nft.include?('15306'),
+ result={'settings'=>PhoneSettings.values,'pending_imports'=>imports.fetch('pending',[]),'time'=>Time.now.strftime('%Y-%m-%d %H:%M:%S %z'),'groups'=>groups,'dns_redirect_ready'=>mapping.reject{|g|g['ips'].empty?}.all?{|g|nft.include?(":#{g['dns_port']}")},
  'guard_ready'=>guard.include?('drop'),'logs'=>lines,'scope'=>managed_ips.join(', '),'device_count'=>managed_ips.size,'read_only'=>false}
  puts js(result)
 rescue =>e

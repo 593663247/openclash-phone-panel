@@ -1,3 +1,4 @@
+require_relative 'settings'
 def ip_elements(ips)
  a=ips.map{|ip|ip.split('.').map(&:to_i).inject(0){|n,v|n*256+v}}.uniq.sort
  ranges=[];a.each{|n|if ranges.last && ranges.last[1]+1==n; ranges.last[1]=n;else;ranges<<[n,n];end}
@@ -21,19 +22,20 @@ ips.each do |ip|
  rules=(cfg['rules']||[]).select{|r|r.start_with?('SRC-IP-CIDR,') && r.split(',')[1]==ip+'/32'}
  raise "#{ip} 缺少或存在重复来源规则，拒绝自动修改" unless rules.size==1
  node=rules.first.split(',')[2]
- raise "#{ip} 不是可直接绑定的手机节点" unless node.start_with?('手机-') && nodes.include?(node)
+ raise "#{ip} 不是可直接绑定的手机节点" unless PhoneSettings.phone?(node) && nodes.include?(node)
  assign[ip]=node
 end
-(cfg['proxies']||[]).map{|n|n['name']}.grep(/\A手机-/).uniq.each do |name|
+(cfg['proxies']||[]).map{|n|n['name']}.select{|name|PhoneSettings.phone?(name)}.uniq.each do |name|
  next if mapping.any?{|g|g['node']==name}
- id=mapping.map{|g|g['id']}.max.to_i+1;raise '分组超过100' if id>100
- mapping<<{'id'=>id,'node'=>name,'ips'=>[],'dns_port'=>15300+id,'socks_port'=>18000+id}
+ id=mapping.map{|g|g['id']}.max.to_i+1;raise '分组超过100' if id>PhoneSettings.port('max_groups')
+ mapping<<{'id'=>id,'node'=>name,'ips'=>[],'dns_port'=>PhoneSettings.port('dns_base')+id,'socks_port'=>PhoneSettings.port('socks_base')+id}
 end
+mapping.each{|g|g.merge!(PhoneSettings.group(g['id'],g['node'],g['ips']))}
 mapping.each{|g|g['ips']=ips.select{|ip|assign[ip]==g['node']}}
 File.write(base+'/mapping.yaml',mapping.to_yaml)
 raise 'DNS 配置生成失败' unless system('/usr/bin/ruby',base+'/render-dns.rb')
 raise 'DNS 配置校验失败' unless system('/usr/bin/sing-box','check','-c',base+'/config.json')
-rules=mapping.reject{|g|g['ips'].empty?}.map{|g|" iifname \"br-lan\" ip saddr { #{g['ips'].join(', ')} } meta l4proto { tcp, udp } th dport 53 counter redirect to :#{g['dns_port']} comment \"Phone DNS group #{g['id']}\""}
+rules=mapping.reject{|g|g['ips'].empty?}.map{|g|" iifname \"#{PhoneSettings['bridge']}\" ip saddr { #{g['ips'].join(', ')} } meta l4proto { tcp, udp } th dport 53 counter redirect to :#{g['dns_port']} comment \"Phone DNS group #{g['id']}\""}
 path='/etc/nftables.d/90-phone-fixed-egress.nft'
 nft=File.read(path)
 raise 'DNS 防火墙链格式异常' unless nft.match?(/chain codex_phone_dns \{.*?^\}/m)

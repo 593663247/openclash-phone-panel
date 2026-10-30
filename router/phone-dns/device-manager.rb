@@ -1,3 +1,4 @@
+require_relative 'settings'
 def ip_elements(ips)
  a=ips.map{|ip|ip.split('.').map(&:to_i).inject(0){|n,v|n*256+v}}.uniq.sort
  ranges=[];a.each{|n|if ranges.last && ranges.last[1]+1==n; ranges.last[1]=n;else;ranges<<[n,n];end}
@@ -50,21 +51,21 @@ def valid_input(req)
  raise '请求格式无效' unless req.is_a?(Hash)
  name=req['name'].to_s.strip;ip=req['ip'].to_s.strip;mac=req['mac'].to_s.strip.downcase;gid=req['group'].to_s
  raise '设备名称需要 1～40 个字符，不能包含控制字符' unless (1..40).include?(name.length) && !name.match?(/[\x00-\x1f\x7f]/)
- raise '固定 IP 必须为 192.168.1.2～254，不能填写路由器地址' unless ip.match?(/\A192\.168\.1\.(?:[1-9][0-9]{0,2})\z/) && (2..254).include?(ip.split('.').last.to_i)
+ raise '固定 IP 必须位于配置网段内，且不能是路由器、网络或广播地址' unless PhoneSettings.usable?(ip)
  raise 'MAC 地址格式无效，请填写六组十六进制（冒号分隔）' unless mac.match?(/\A(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\z/)
  raise '不能使用组播、广播或全零 MAC' if mac=='00:00:00:00:00:00' || mac[0,2].to_i(16).odd?
- raise '请选择已有独立 DNS 分组' unless gid.match?(/\A[1-9][0-9]{0,2}\z/) && gid.to_i<=100
+ raise '请选择已有独立 DNS 分组' unless gid.match?(/\A[1-9][0-9]{0,2}\z/) && gid.to_i<=PhoneSettings.port('max_groups')
  {'name'=>name,'ip'=>ip,'mac'=>mac,'group'=>gid.to_i}
 end
 def catalog
  mapping=YAML.load_file(BASE+'/mapping.yaml')
  source=YAML.load_file(source_path,aliases:true)
- names=(source['proxies']||[]).map{|n|n['name']}.grep(/\A手机[-－]/).uniq
+ names=(source['proxies']||[]).map{|n|n['name']}.select{|name|PhoneSettings.phone?(name)}.uniq
  id=mapping.map{|g|g['id']}.max.to_i
  names.each do |name|
   next if mapping.any?{|g|g['node']==name}
-  id+=1;raise '手机节点数量超过支持范围' if id>100
-  mapping<<{'id'=>id,'node'=>name,'ips'=>[],'dns_port'=>15300+id,'socks_port'=>18000+id}
+  id+=1;raise '手机节点数量超过支持范围' if id>PhoneSettings.port('max_groups')
+  mapping<<{'id'=>id,'node'=>name,'ips'=>[],'dns_port'=>PhoneSettings.port('dns_base')+id,'socks_port'=>PhoneSettings.port('socks_base')+id}
  end
  mapping
 end
@@ -88,7 +89,7 @@ def plan(req)
  leases=File.readlines('/tmp/dhcp.leases').map(&:split) rescue []
  raise '该 IP 当前租给了其他设备，请换一个空闲 IP' if leases.any?{|l|l[2]==d['ip'] && l[1].downcase!=d['mac']}
  raise '该 MAC 当前使用其他 IP，请先在 DHCP 中迁移租约，避免断网' if leases.any?{|l|l[1].downcase==d['mac'] && l[2]!=d['ip']}
- neighbors=quiet('ip','neigh','show','dev','br-lan')
+ neighbors=quiet('ip','neigh','show','dev',PhoneSettings['bridge'])
  neighbors.each_line do |line|
   a=line.split; next unless a.first==d['ip'] && a.include?('lladdr')
   seen=a[a.index('lladdr')+1].downcase
@@ -103,9 +104,9 @@ def nft_text(mapping,hs)
  raise 'MAC 数据异常' unless macs.all?{|m|m.match?(/\A(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\z/)}
  s="set codex_phone4 {\n type ipv4_addr\n flags interval\n elements = { #{ip_elements(ips)} }\n}\n"
  s+="set codex_phone_mac {\n type ether_addr\n elements = { #{macs.join(', ')} }\n}\n"
- s+="chain codex_phone_guard {\n type filter hook forward priority -10; policy accept;\n iifname \"br-lan\" oifname != \"br-lan\" ip saddr @codex_phone4 counter drop comment \"Phone fixed egress: no direct forwarding\"\n iifname \"br-lan\" oifname != \"br-lan\" ether saddr @codex_phone_mac counter drop comment \"Phone fixed egress: IPv6 and address-change guard\"\n}\n"
+ s+="chain codex_phone_guard {\n type filter hook forward priority -10; policy accept;\n iifname \"#{PhoneSettings['bridge']}\" oifname != \"#{PhoneSettings['bridge']}\" ip saddr @codex_phone4 counter drop comment \"Phone fixed egress: no direct forwarding\"\n iifname \"#{PhoneSettings['bridge']}\" oifname != \"#{PhoneSettings['bridge']}\" ether saddr @codex_phone_mac counter drop comment \"Phone fixed egress: IPv6 and address-change guard\"\n}\n"
  s+="chain codex_phone_dns {\n type nat hook prerouting priority -101; policy accept;\n"
- mapping.reject{|g|g['ips'].empty?}.each{|g|s+=" iifname \"br-lan\" ip saddr { #{g['ips'].join(', ')} } meta l4proto { tcp, udp } th dport 53 counter redirect to :#{g['dns_port']} comment \"Phone DNS group #{g['id']}\"\n"}
+ mapping.reject{|g|g['ips'].empty?}.each{|g|s+=" iifname \"#{PhoneSettings['bridge']}\" ip saddr { #{g['ips'].join(', ')} } meta l4proto { tcp, udp } th dport 53 counter redirect to :#{g['dns_port']} comment \"Phone DNS group #{g['id']}\"\n"}
  s+"}\n"
 end
 def jobwrite(id,data)

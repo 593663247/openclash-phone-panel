@@ -1,6 +1,7 @@
 module('luci.controller.phone_panel', package.seeall)
 function index()
  local p=entry({'admin','services','phone_panel'},template('phone_panel'),'手机出口与 DNS',55)
+ entry({'admin','services','phone_panel','settings'},cbi('phone_panel_settings'),'设置 / Settings',60)
  p.dependent=true
  p.acl_depends={'luci-app-openclash'}
  entry({'admin','services','phone_panel','status'},call('status')).leaf=true
@@ -19,15 +20,17 @@ function probe()
  local h=require('luci.http');local j=require('luci.jsonc');local n=require('nixio')
  local id=h.formvalue('id')
  if not id or not id:match('^%d+$') or tonumber(id)<1 or tonumber(id)>100 then h.status(400,'Bad Request');h.prepare_content('application/json');h.write('{"error":"invalid group"}');return end
+ local function port(k,default) local v=tonumber(require('luci.model.uci').cursor():get('phone_panel','main',k)) or default;if v<1024 or v>64500 then error('invalid port setting') end;return v end
+ local db=port('dns_base',15300);local sb=port('socks_base',18000)
  local i=tonumber(id);local result={id=i,time=os.date('%Y-%m-%d %H:%M:%S'),dns_ok=false}
  local s=n.socket('inet','dgram')
  if s then
-  s:setopt('socket','rcvtimeo',3);s:connect('127.0.0.1',15300+i)
+  s:setopt('socket','rcvtimeo',3);s:connect('127.0.0.1',db+i)
   local q=string.char(122,i,1,0,0,1,0,0,0,0,0,0,7)..'example'..string.char(3)..'com'..string.char(0,0,1,0,1)
   s:send(q);local r=s:recv(4096);s:close()
   if r and #r>=12 and r:byte(1)==122 and r:byte(2)==i then result.rcode=r:byte(4)%16;result.answers=r:byte(7)*256+r:byte(8);result.dns_ok=result.rcode==0 and result.answers>0 end
  end
- local ip=require('luci.sys').exec('/usr/bin/curl --noproxy "" --socks5-hostname 127.0.0.1:'..(18000+i)..' -fsS --connect-timeout 3 --max-time 7 https://api.ipify.org 2>/dev/null'):match('^%s*([%d%.]+)%s*$')
+ local ip=require('luci.sys').exec('/usr/bin/curl --noproxy "" --socks5-hostname 127.0.0.1:'..(sb+i)..' -fsS --connect-timeout 3 --max-time 7 https://api.ipify.org 2>/dev/null'):match('^%s*([%d%.]+)%s*$')
  result.exit_ip=ip;result.exit_ok=ip~=nil
  h.header('Cache-Control','no-store');h.prepare_content('application/json');h.write(j.stringify(result))
 end

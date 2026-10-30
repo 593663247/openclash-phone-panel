@@ -1,10 +1,11 @@
+require_relative 'settings'
 require 'yaml'
 module PhoneImport
  def self.plan(cfg,mapping,hosts,leases,pending_changes=false)
-  nodes=(cfg['proxies']||[]).map{|n|n['name']}.grep(/\A手机-/)
+  nodes=(cfg['proxies']||[]).map{|n|n['name']}.select{|name|PhoneSettings.phone?(name)}
   candidates=(cfg['rules']||[]).map do |r|
-   a=r.to_s.split(',');next unless a[0]=='SRC-IP-CIDR' && a[1].to_s.match?(/\A192\.168\.1\.(?:[1-9][0-9]{0,2})\/32\z/) && nodes.include?(a[2])
-   ip=a[1].split('/')[0];next unless (2..254).include?(ip.split('.').last.to_i)
+   a=r.to_s.split(',');next unless a[0]=='SRC-IP-CIDR' && a[1].to_s.end_with?('/32') && nodes.include?(a[2])
+   ip=a[1].split('/')[0];next unless PhoneSettings.usable?(ip)
    [ip,a[2]]
   end
   candidates.compact!
@@ -58,8 +59,8 @@ module PhoneImport
    end
    g=mapping.find{|x|x['node']==d['node']}
    unless g
-    id=mapping.map{|x|x['id']}.max.to_i+1;raise '分组超过100' if id>100
-    g={'id'=>id,'node'=>d['node'],'ips'=>[],'dns_port'=>15300+id,'socks_port'=>18000+id};mapping<<g
+    id=mapping.map{|x|x['id']}.max.to_i+1;raise '分组超过100' if id>PhoneSettings.port('max_groups')
+    g={'id'=>id,'node'=>d['node'],'ips'=>[],'dns_port'=>PhoneSettings.port('dns_base')+id,'socks_port'=>PhoneSettings.port('socks_base')+id};mapping<<g
    end
    g['ips']<<d['ip'];devices.reject!{|x|x['ip']==d['ip']};devices<<d.slice('ip','mac','name').merge('group'=>g['id'],'source'=>'auto-import')
   end

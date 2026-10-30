@@ -3,6 +3,9 @@
 set -eu
 ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 MODE=${1:---check}
+if [ "$MODE" = --install-deps ]; then
+ exec sh "$ROOT/scripts/install-deps.sh" --install-deps
+fi
 case "$MODE" in --check|--install) ;; *) echo 'Usage: install.sh --check|--install'; exit 2;; esac
 [ "$(id -u)" = 0 ] || { echo 'Run on router as root'; exit 1; }
 for C in ruby lua uci nft fw4 curl netstat ip sha256sum sing-box dnsmasq; do command -v "$C" >/dev/null || { echo "Missing dependency: $C"; exit 1; }; done
@@ -25,6 +28,9 @@ cp "$ROOT/router/phone-dns/phone-dns.init" /etc/init.d/phone-dns
 chmod 755 /etc/init.d/phone-dns
 cp "$ROOT/router/phone-dns/status.rb" /etc/phone-dns/panel-status.rb
 cp "$ROOT/router/luci/controller/phone_panel.lua" /usr/lib/lua/luci/controller/
+mkdir -p /usr/lib/lua/luci/model/cbi
+cp "$ROOT/router/config/phone_panel" /etc/config/
+cp "$ROOT/router/luci/model/cbi/phone_panel_settings.lua" /usr/lib/lua/luci/model/cbi/
 cp "$ROOT/router/luci/view/phone_panel.htm" /usr/lib/lua/luci/view/
 cp "$ROOT/router/nftables/90-phone-fixed-egress.nft" /etc/nftables.d/
 cp "$ROOT/router/openclash/phone-routing.sh" /etc/openclash/custom/

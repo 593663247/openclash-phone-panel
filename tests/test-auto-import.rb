@@ -1,4 +1,5 @@
 require_relative '../router/phone-dns/auto-import'
+PhoneSettings.instance_variable_set(:@values,PhoneSettings.validate({}))
 n='手机-01-示例';c={'proxies'=>[{'name'=>n}],'rules'=>["SRC-IP-CIDR,192.168.1.171/32,#{n}","MATCH,DIRECT"]};h=[{'ip'=>'192.168.1.171','mac'=>'02:11:22:33:44:55','name'=>'device-01'}]
 a,p=PhoneImport.plan(c,[],h,[]);raise unless a.size==1 && p.empty? && !a[0]['needs_lease']
 a,p=PhoneImport.plan(c,[],[],[]);raise unless a.empty? && p.size==1
