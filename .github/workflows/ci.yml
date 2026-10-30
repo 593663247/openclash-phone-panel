@@ -7,17 +7,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Device preview regression tests
+        run: node tests/test-preview.cjs
       - name: Install syntax tools
         run: sudo apt-get update && sudo apt-get install -y ruby lua5.1
       - name: Ruby syntax and pure import planning tests
         run: |
-          find router tests -name '*.rb' -exec ruby -c {} \;
+          for file in router/phone-dns/*.rb tests/*.rb; do ruby -c "$file"; done
           ruby tests/test-auto-import.rb
+          ruby tests/test-settings.rb
+          ruby tests/test-device-plan.rb
       - name: Shell and Lua syntax
         run: |
           sh -n scripts/install.sh
+          sh -n scripts/maintenance.sh
+          sh -n scripts/install-deps.sh
           sh -n router/phone-dns/phone-dns.init
           sh -n router/openclash/phone-routing.sh
           luac5.1 -p router/luci/controller/phone_panel.lua
+          luac5.1 -p router/luci/model/cbi/phone_panel_settings.lua
       - name: Publication privacy gate
         run: python3 scripts/privacy_check.py
+      - name: Isolated maintenance backup and restore
+        run: python3 tests/test-maintenance.py

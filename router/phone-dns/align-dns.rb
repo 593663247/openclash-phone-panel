@@ -10,8 +10,8 @@ base='/etc/phone-dns'
 lock=File.open('/var/lock/phone-dns-align.lock','w',0600)
 lock.flock(File::LOCK_EX)
 f=ARGV.fetch(0);cfg=YAML.load_file(f,aliases:true)
-snap_paths=Dir.glob(base+'/*.yaml')+Dir.glob(base+'/group-*.conf')+[base+'/config.json','/etc/config/dhcp','/etc/nftables.d/90-phone-fixed-egress.nft']
-snapshots=snap_paths.to_h{|p|[p,File.binread(p)]}
+snap_paths=(Dir.glob(base+'/*.yaml')+Dir.glob(base+'/group-*.conf')+[base+'/devices.yaml',base+'/import-status.yaml',base+'/listeners.yaml',base+'/config.json','/etc/config/dhcp','/etc/nftables.d/90-phone-fixed-egress.nft']).uniq
+snapshots=snap_paths.to_h{|p|[p,File.exist?(p) ? File.binread(p) : nil]}
 begin
 require base+'/auto-import.rb'
 mapping=PhoneImport.run(cfg,YAML.load_file(base+'/mapping.yaml'))
@@ -39,6 +39,8 @@ rules=mapping.reject{|g|g['ips'].empty?}.map{|g|" iifname \"#{PhoneSettings['bri
 path='/etc/nftables.d/90-phone-fixed-egress.nft'
 nft=File.read(path)
 raise 'DNS 防火墙链格式异常' unless nft.match?(/chain codex_phone_dns \{.*?^\}/m)
+raise '固定出口保护链格式异常' unless nft.match?(/chain codex_phone_guard \{.*?^\}/m)
+nft=nft.sub(/chain codex_phone_guard \{.*?^\}/m,"chain codex_phone_guard {\n type filter hook forward priority -10; policy accept;\n iifname \"#{PhoneSettings['bridge']}\" oifname != \"#{PhoneSettings['bridge']}\" ip saddr @codex_phone4 counter drop comment \"Phone fixed egress: no direct forwarding\"\n iifname \"#{PhoneSettings['bridge']}\" oifname != \"#{PhoneSettings['bridge']}\" ether saddr @codex_phone_mac counter drop comment \"Phone fixed egress: IPv6 and address-change guard\"\n}")
 nft=nft.sub(/chain codex_phone_dns \{.*?^\}/m,"chain codex_phone_dns {\n type nat hook prerouting priority -101; policy accept;\n"+rules.join("\n")+"\n}")
 hs=PhoneImport.hosts
 macs=ips.flat_map{|ip|h=hs.find{|x|x['ip']==ip};raise "缺少静态租约 #{ip}" unless h;h.fetch('mac','').downcase.split}.uniq
@@ -57,7 +59,7 @@ end
 puts "Aligned #{ips.size} devices / #{mapping.size} nodes"
 
 rescue =>e
- snapshots.each{|p,data|File.binwrite(p,data)}
+ snapshots.each{|p,data|data ? File.binwrite(p,data) : (File.delete(p) if File.exist?(p))}
  (Dir.glob(base+'/group-*.conf')-snap_paths).each{|p|File.delete(p)}
  system('uci','revert','dhcp')
  warn "Automatic import/alignment failed; restored saved configuration: #{e.message}"

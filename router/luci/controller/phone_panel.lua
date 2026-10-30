@@ -20,7 +20,7 @@ function probe()
  local h=require('luci.http');local j=require('luci.jsonc');local n=require('nixio')
  local id=h.formvalue('id')
  if not id or not id:match('^%d+$') or tonumber(id)<1 or tonumber(id)>100 then h.status(400,'Bad Request');h.prepare_content('application/json');h.write('{"error":"invalid group"}');return end
- local function port(k,default) local v=tonumber(require('luci.model.uci').cursor():get('phone_panel','main',k)) or default;if v<1024 or v>64500 then error('invalid port setting') end;return v end
+ local function port(k,default) local v=tonumber(require('luci.model.uci').cursor():get('phone_panel','main',k)) or default;if v~=math.floor(v) or v+tonumber(id)<1024 or v+tonumber(id)>65535 then error('invalid port setting') end;return v end
  local db=port('dns_base',15300);local sb=port('socks_base',18000)
  local i=tonumber(id);local result={id=i,time=os.date('%Y-%m-%d %H:%M:%S'),dns_ok=false}
  local s=n.socket('inet','dgram')

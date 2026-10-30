@@ -1,5 +1,5 @@
 local m=Map('phone_panel','手机面板设置 / Phone panel settings',
- '保存不会立即修改网络。请先运行 phone-panel doctor，再在维护窗口运行 phone-panel initialize。更改 fwmark 必须与 OpenClash 策略路由一致。')
+ '保存不会立即修改网络。请在源码目录运行 sh scripts/maintenance.sh doctor，再在维护窗口运行 sh scripts/maintenance.sh initialize --apply。更改 fwmark 必须与 OpenClash 策略路由一致。')
 local s=m:section(NamedSection,'main','main','网络与 DNS / Network and DNS')
 s.addremove=false
 local fields={

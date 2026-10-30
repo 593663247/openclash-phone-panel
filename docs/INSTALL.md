@@ -6,13 +6,13 @@
 
 此版本是参考源码，不是 `.ipk`。需要 root SSH、路由器本地/有线恢复通道，以及自行安装并可运行的 OpenClash/Mihomo、sing-box 1.12.x、Ruby 3.1+ 和 YAML/Psych、LuCI Lua/nixio、dnsmasq、curl、fw4/nftables。
 
-默认假定 LAN=`192.168.1.1/24`、网桥=`br-lan`，业务代理为真实存在且支持 TCP/UDP 的 SOCKS5。其他拓扑必须先审查所有脚本：
+默认假定 LAN=`192.168.1.1/24`、网桥=`br-lan`，业务代理为真实存在且支持 TCP/UDP 的 SOCKS5。安装后可在 LuCI 设置或 `/etc/config/phone_panel` 配置单个 LAN 的 CIDR、路由器地址、网桥、端口、节点前缀与 DoH。其他拓扑必须先审查所有脚本：
 
 ```sh
 grep -R -n '192\.168\.1\|br-lan\|0x162\|9090' router
 ```
 
-网段修改涉及校验器、来源规则识别和 dnsmasq 监听地址，不能只改页面提示。参考路由依赖 OpenClash 的 `openclash`、`openclash_mangle`、`localnetwork` 以及 `0x162` 策略路由，须先核对本机。不提供自动兼容探测。
+设置保存仅更新参数；须先运行 `sh scripts/maintenance.sh doctor` 校验，审查钩子后在维护窗口执行 `sh scripts/maintenance.sh initialize --apply` 才重新生成并应用网络配置。参考路由依赖 OpenClash 的 `openclash`、`openclash_mangle`、`localnetwork` 以及 `0x162` 策略路由，须先核对本机。不提供自动兼容探测。
 
 先通过 LuCI 导出系统备份，另行保存活动 OpenClash 源配置、自定义脚本、`/etc/config/dhcp`、`/etc/nftables.d/`。这些都是私密数据，不要放进仓库。
 
@@ -24,7 +24,7 @@ grep -R -n '192\.168\.1\|br-lan\|0x162\|9090' router
 sh scripts/install.sh --check
 ```
 
-脚本不安装缺失依赖。用 `netstat -ln` 确认以下端口未被其他应用占用（也要检查每组内部 DoH 入口）：
+默认检查不会安装依赖；如需显式安装缺失依赖，使用 `sh scripts/install.sh --install-deps`，仅使用已配置的 opkg 软件源。用 `netstat -ln` 确认以下端口未被其他应用占用（也要检查每组内部 DoH 入口）：
 
 | 用途 | 第 g 组端口（1≤g≤100） |
 |---|---|
@@ -110,7 +110,7 @@ logread | grep phone-panel
 
 This is reference source, not an `.ipk`. Require root SSH, wired/local recovery access, working OpenClash/Mihomo, sing-box 1.12.x, Ruby 3.1+ with YAML/Psych, LuCI Lua/nixio, dnsmasq, curl and fw4/nftables. Defaults are `192.168.1.1/24` and `br-lan`.
 
-Review every reference to the subnet, bridge, controller port 9090 and mark `0x162` before adapting. Routing integration assumes the existing `openclash`, `openclash_mangle`, `localnetwork` objects and working policy routing. No universal topology detection is implemented. Back up the system, active source YAML, DHCP, custom hooks and nftables privately. Keep local recovery access throughout deployment.
+Configure one IPv4 LAN, bridge, proxy prefix, port ranges, DoH and mark in `/etc/config/phone_panel` or LuCI settings. Saving does not apply networking. Run `sh scripts/maintenance.sh doctor` before `initialize --apply` in a maintenance window. Review routing compatibility before adapting. Routing integration assumes the existing `openclash`, `openclash_mangle`, `localnetwork` objects and working policy routing. No universal topology detection is implemented. Back up the system, active source YAML, DHCP, custom hooks and nftables privately. Keep local recovery access throughout deployment.
 
 ### Staging and activation
 
@@ -126,6 +126,12 @@ Review every reference to the subnet, bridge, controller port 9090 and mark `0x1
 
 ### Recovery and upgrades
 
-The staging installer refuses existing installations; upgrades require manual review and backups. There is no automatic migration or universal uninstaller. Restore original DHCP, source configuration, nftables files and remove only the hook additions belonging to this project. Stop affected services first, reload the firewall, restart the original OpenClash setup, and verify recovery before removing dedicated project files. Disabling/removing the project can remove fail-closed protection.
+The staging installer refuses existing installations. Use `sh scripts/maintenance.sh upgrade` to snapshot and stage code while preserving settings; review hooks and run doctor before explicit activation. See MAINTENANCE.md. There is no universal runtime migration or complete uninstaller. Restore original DHCP, source configuration, nftables files and remove only the hook additions belonging to this project. Stop affected services first, reload the firewall, restart the original OpenClash setup, and verify recovery before removing dedicated project files. Disabling/removing the project can remove fail-closed protection.
 
 Job snapshots under `/root/phone-panel-changes/<job>/` use `manifest.yaml` and ordered `file-N` files. File rollback is not a guarantee of runtime rollback or crash safety. Inspect running services/nftables manually after a failure. Never publish snapshots or unsanitized configuration.
+
+## 维护版本更新 / Maintenance updates
+
+见 [MAINTENANCE.md](MAINTENANCE.md) 与 [CHANGELOG.md](../CHANGELOG.md)。备份包含活动 OpenClash 源配置、两处自定义钩子和路由集成脚本。恢复前会再做快照；恢复的是所选快照文件，不会自动启动服务，也不删除快照中不存在的额外文件。恢复后必须人工核对生成文件与运行态。
+
+Backups include the active source YAML, both custom hooks and routing script. Restore makes another snapshot first, restores the selected snapshot, and leaves services stopped. It merges saved files and does not remove extra files absent from the snapshot; inspect generated files and runtime state manually.

@@ -47,4 +47,31 @@ module PhoneSettings
   raise 'Group ID outside configured limit' unless (1..port('max_groups')).include?(id)
   {'id'=>id,'node'=>node,'ips'=>ips,'dns_port'=>port('dns_base')+id,'socks_port'=>port('socks_base')+id}
  end
+ def self.active_leases(lines,now=Time.now.to_i)
+  lines.map{|line|line.is_a?(Array) ? line : line.split}.select do |l|
+   next false unless l.size>=4 && l[0].match?(/\A\d+\z/)
+   next false unless l[0].to_i==0 || l[0].to_i>now
+   next false unless l[1].match?(/\A(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\z/i)
+   begin;ipnum(l[2]);true;rescue;false;end
+  end
+ end
+ def self.lease_section(prefix,ip)
+  ipnum(ip)
+  prefix+'_'+ip.tr('.','_')
+ end
+ # Never return raw proxy log text: it can contain credentials and destination URLs.
+ def self.warning_summary(line,ips)
+  ip=ips.find{|address|line.include?(address+':')}
+  return nil unless ip && line.match?(/level=(?:warning|error)\b/)
+  time=line[/time="([0-9T:Z.+-]+)"/,1] || 'unknown time'
+  reason=case line
+   when /connection refused/i;'connection refused'
+   when /username|password|authentication|unauthorized/i;'authentication failed'
+   when /timeout|timed out|deadline exceeded/i;'connection timeout'
+   when /no such host|dns.*failed/i;'DNS lookup failed'
+   when /network is unreachable|no route to host/i;'network unreachable'
+   else;'connection warning (inspect private router logs)'
+  end
+  time+' | '+ip+' | '+reason
+ end
 end

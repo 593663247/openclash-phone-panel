@@ -2,6 +2,7 @@ require_relative 'settings'
 require 'yaml'
 module PhoneImport
  def self.plan(cfg,mapping,hosts,leases,pending_changes=false)
+  leases=PhoneSettings.active_leases(leases)
   nodes=(cfg['proxies']||[]).map{|n|n['name']}.select{|name|PhoneSettings.phone?(name)}
   candidates=(cfg['rules']||[]).map do |r|
    a=r.to_s.split(',');next unless a[0]=='SRC-IP-CIDR' && a[1].to_s.end_with?('/32') && nodes.include?(a[2])
@@ -44,13 +45,13 @@ module PhoneImport
  end
  def self.run(cfg,mapping)
   base='/etc/phone-dns';hs=hosts
-  ls=(File.readlines('/tmp/dhcp.leases').map(&:split) rescue []).select{|l|l.size>=4 && (l[0].to_i==0 || l[0].to_i>=Time.now.to_i)}
+  ls=PhoneSettings.active_leases((File.readlines('/tmp/dhcp.leases') rescue []))
   changes=IO.popen(['uci','changes','dhcp'],&:read).strip
   accepted,pending=plan(cfg,mapping,hs,ls,!changes.empty?)
   devices=File.exist?(base+'/devices.yaml') ? (YAML.load_file(base+'/devices.yaml')||[]) : []
   accepted.each do |d|
    if d['needs_lease']
-    sec='phone_import_'+d['ip'].split('.').last
+    sec=PhoneSettings.lease_section('phone_import',d['ip'])
     used=IO.popen(['uci','-q','get','dhcp.'+sec],err:File::NULL,&:read).strip
     if !used.empty?;pending<<d.slice('ip','node').merge('reason'=>'自动租约段名冲突');next;end
     args=[["dhcp.#{sec}=host"],["dhcp.#{sec}.ip=#{d['ip']}"],["dhcp.#{sec}.mac=#{d['mac']}"],["dhcp.#{sec}.name=phone-#{d['ip'].split('.').last}"]]

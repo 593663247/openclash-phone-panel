@@ -32,9 +32,13 @@ end
 def tracked
  [source_path,'/etc/config/dhcp',BASE+'/mapping.yaml',BASE+'/devices.yaml','/etc/nftables.d/90-phone-fixed-egress.nft',BASE+'/config.json',BASE+'/listeners.yaml']+Dir.glob(BASE+'/group-*.conf')
 end
+def revision_data
+ s=PhoneSettings.values.to_yaml+"\0"+(File.exist?('/etc/config/phone_panel') ? File.read('/etc/config/phone_panel') : '')+"\0"+tracked.map{|p|p+"\0"+(File.exist?(p) ? File.read(p) : '')}.join("\0")
+ s
+end
+
 def revision
- s=tracked.map{|p|p+"\0"+(File.exist?(p) ? File.read(p) : '')}.join("\0")
- IO.popen(['sha256sum'],'r+') {|i|i.write(s);i.close_write;i.read.split.first}
+ IO.popen(['sha256sum'],'r+') {|i|i.write(revision_data);i.close_write;i.read.split.first}
 end
 def hosts
  out=[];h=nil
@@ -69,24 +73,37 @@ def catalog
  end
  mapping
 end
+def active_dhcp_leases
+ PhoneSettings.active_leases(File.readlines('/tmp/dhcp.leases'))
+rescue Errno::ENOENT
+ []
+end
+
 def plan(req)
  d=valid_input(req)
  raise '存在未保存的 DHCP 配置，请先保存或撤销后重试' unless quiet('uci','changes','dhcp').strip.empty?
+ raise '存在未保存的面板设置，请先保存或撤销后重试' unless quiet('uci','changes','phone_panel').strip.empty?
  mapping=catalog;g=mapping.find{|x|x['id']==d['group']};raise 'DNS 分组不存在' unless g
  raise '该 IP 已在面板管理范围内，请勿重复添加' if mapping.any?{|x|x['ips'].include?(d['ip'])}
  source=YAML.load_file(source_path,aliases:true)
  existing=(source['rules']||[]).select{|r|r.start_with?('SRC-IP-CIDR,') && r.split(',')[1]==d['ip']+'/32'}
  raise '已有来源规则重复或绑定了其他节点' unless existing.empty? || (existing.size==1 && existing.first.split(',')[2]==g['node'])
  raise '所选节点已不存在' unless (source['proxies']||[]).any?{|n|n['name']==g['node']}
- hs=hosts;adopt=false
+ unless existing.empty?
+  first_other=(source['rules']||[]).index{|r|!r.to_s.start_with?('SRC-IP-CIDR,')}
+  raise '来源绑定位于其他规则之后，请移至规则顶部' if first_other && source['rules'].index(existing.first)>first_other
+ end
+ hs=hosts;adopt=false;matches=0
  hs.each do |h|
   macs=h.fetch('mac','').downcase.split(/\s+/)
   if h['ip']==d['ip'] || macs.include?(d['mac'])
    raise 'IP 或 MAC 与已有静态租约冲突' unless h['ip']==d['ip'] && macs.include?(d['mac'])
+   matches+=1
+   raise 'IP 或 MAC 存在重复静态租约' if matches>1 || macs.uniq!=[d['mac']]
    adopt=true
   end
  end
- leases=File.readlines('/tmp/dhcp.leases').map(&:split) rescue []
+ leases=active_dhcp_leases
  raise '该 IP 当前租给了其他设备，请换一个空闲 IP' if leases.any?{|l|l[2]==d['ip'] && l[1].downcase!=d['mac']}
  raise '该 MAC 当前使用其他 IP，请先在 DHCP 中迁移租约，避免断网' if leases.any?{|l|l[1].downcase==d['mac'] && l[2]!=d['ip']}
  neighbors=quiet('ip','neigh','show','dev',PhoneSettings['bridge'])
@@ -126,7 +143,7 @@ def apply_worker(id)
   idx=a['rules'].index{|r|!r.start_with?('SRC-IP-CIDR,')}||0
   a['rules'].insert(idx,"SRC-IP-CIDR,#{p['ip']}/32,#{p['node']}") unless a['rules'].include?("SRC-IP-CIDR,#{p['ip']}/32,#{p['node']}")
   unless p['adopt_lease']
-   sec='phone_panel_'+p['ip'].split('.').last
+   sec=PhoneSettings.lease_section('phone_panel',p['ip'])
    raise 'DHCP 配置段名称冲突' unless quiet('uci','-q','get','dhcp.'+sec).empty?
    run('uci','set',"dhcp.#{sec}=host")
    {'mac'=>p['mac'],'ip'=>p['ip'],'name'=>'phone-'+p['ip'].split('.').last}.each{|k,v|run('uci','set',"dhcp.#{sec}.#{k}=#{v}")}
@@ -163,6 +180,7 @@ rescue =>e
  if backup && !snaps.empty?
   begin
    snaps.each{|f,s|s ? atomic(f,s) : (File.delete(f) if File.exist?(f))}
+   (Dir.glob(BASE+'/group-*.conf')-snaps.keys).each{|f|File.delete(f)}
    quiet('uci','revert','dhcp');run('fw4','check');run('/etc/init.d/firewall','reload');run('/etc/init.d/openclash','stop')
    File.delete('/tmp/openclash.change') if File.exist?('/tmp/openclash.change')
    run('/etc/init.d/openclash','start');run('/etc/init.d/phone-dns','restart');run('/etc/init.d/dnsmasq','reload');recovered=true
@@ -172,6 +190,7 @@ rescue =>e
 ensure
  lock.close if lock
 end
+if __FILE__==$PROGRAM_NAME
 begin
  mode=ARGV.shift
  if mode=='worker'
@@ -193,4 +212,6 @@ begin
  else;raise '不支持的操作';end
 rescue =>e
  puts json({'error'=>e.message})
+end
+
 end

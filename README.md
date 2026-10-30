@@ -5,7 +5,7 @@
 为 ImmortalWrt / OpenWrt LuCI 提供手机设备固定出口、分组加密 DNS 与配置同步面板。
 
 > **实验性参考实现，不是官方 OpenClash 插件，也不是通用一键安装包。**
-> 代码由特定 fw4 + REDIRECT/TPROXY 环境整理而来。发布版本已移除部署实例数据，默认示例改为 `192.168.1.0/24`、网桥 `br-lan`。使用其他网段或拓扑前必须适配。安装辅助脚本仅暂存文件，不接管网络。
+> 代码由特定 fw4 + REDIRECT/TPROXY 环境整理而来。发布版本已移除部署实例数据，默认示例改为 `192.168.1.0/24`、网桥 `br-lan`。其他单 LAN 网段可通过 UCI 设置配置；更换网络拓扑仍需适配。安装辅助脚本仅暂存文件，不接管网络。
 
 ## 功能
 
@@ -40,7 +40,7 @@ LuCI → 服务 → 手机出口与 DNS
 
 - 曾验证的部署基线：ImmortalWrt 24.10.2、LuCI Lua 兼容层、fw4/nftables、Mihomo、sing-box 1.12.8。
 - Ruby 3.1+（需 YAML/Psych）、Lua/nixio、curl、dnsmasq、nft/fw4；代码假定命令在默认路径。
-- 仅默认 IPv4 `/24`，最多 100 个节点分组；当前筛选前缀为中文 `手机-`。
+- 单个可配置 IPv4 LAN（CIDR 参数允许 /8～/30，默认 /24），最多 100 个节点分组；默认节点前缀为 `手机-`，可在设置中修改。更宽网段尚需路由器实测。
 - 自动导入仅识别独立代理项，不支持代理组目标、IPv6 来源规则、跨网段或任意 CIDR。
 - 不自动删除旧设备；删除/重命名仍被使用的节点前必须人工迁移。
 - 不保证 TUN、iptables、旁路由、多 VLAN、其他防火墙标记或任意版本兼容。
@@ -64,12 +64,16 @@ LuCI → 服务 → 手机出口与 DNS
 
 ```sh
 ruby tests/test-auto-import.rb
+ruby tests/test-settings.rb
+ruby tests/test-device-plan.rb
+python3 tests/test-maintenance.py
+node tests/test-preview.cjs
 python3 scripts/privacy_check.py
 find router tests -name '*.rb' -exec ruby -c {} \;
 sh -n scripts/install.sh
 ```
 
-CI 只检查语法、纯规划逻辑及发布文件，不代表路由器端集成测试。不要在生产路由器盲目运行安装脚本。
+CI 检查语法、规划逻辑、界面异步状态、隔离文件备份恢复及发布文件，不代表路由器端集成测试。不要在生产路由器盲目运行安装脚本。
 
 ## 隐私与许可
 

@@ -22,9 +22,9 @@ sh scripts/maintenance.sh uninstall --disable
 
 Dependency checks report missing tools without installing packages. Upgrade preserves configuration. Restore snapshots files again before restoring; runtime rollback is not transactional. Uninstall conservatively disables the service and retains data/guards; follow INSTALL.md for manual removal.
 
-**状态：开发版。仅完成语法和纯逻辑测试，维护流程尚未在隔离路由器端完整验证。不要直接替换生产安装；旧安装说明中的固定网段描述尚待统一更新。**
+**状态：开发版。仅完成语法和纯逻辑测试，维护流程尚未在隔离路由器端完整验证。不要直接替换生产安装；更宽网段与其他拓扑仍需隔离路由器验证。**
 
-**Development status:** syntax and pure planning tests only; maintenance flows still need isolated router integration tests. Do not deploy directly to production. Legacy fixed-subnet installation documentation still needs reconciliation.
+**Development status:** syntax and pure planning tests only; maintenance flows still need isolated router integration tests. Do not deploy directly to production. Wider subnets and alternate topologies still require isolated router validation.
 
 ## 可选依赖安装 / Optional dependency installation
 
@@ -40,3 +40,13 @@ Only configured opkg feeds are used. Missing commands/Ruby YAML modules are mapp
 
 此安装入口需要管理员主动执行，不会在打开面板时自动下载。尚未在真实路由器执行下载/安装测试。
 This is an explicit administrator command, not an automatic dashboard side effect. Real-router download/install integration is not yet tested.
+
+## 本轮修复 / Reliability updates
+
+备份新增活动源 YAML、覆写/防火墙钩子和路由脚本。恢复前快照在独立子进程中创建，避免覆盖用户选择的恢复目标；恢复目录须为维护目录下的单个真实子目录。升级同步 init 和路由脚本，并保留 UCI 设置与用户钩子。initialize 在重启 OpenClash 前重新加载防火墙。
+
+Backups now include source YAML, custom hooks and routing integration. A pre-restore backup cannot replace the selected snapshot variable. Restore resolves and checks its directory boundary. Upgrade refreshes init/routing code while retaining UCI settings and custom hooks. Initialization reloads the firewall before starting OpenClash.
+
+`doctor` 验证依赖和设置，不代表已验证端口占用、TPROXY 策略路由、钩子执行或真实网络连通性。恢复仍为文件合并，不自动移除新增文件或恢复服务启用状态。
+
+Doctor checks dependencies and settings, not occupied ports, policy routing, hook execution or connectivity. Restore remains a file merge; it does not delete newly created files or restore service enablement state.

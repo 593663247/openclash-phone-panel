@@ -44,7 +44,7 @@ Edit the existing `/32` rule target in the active source configuration, save and
 
 Old devices are not automatically deleted. There is no general-purpose delete action. Migrate devices and inspect mapping/leases/listeners/firewall sets before deleting a source rule or renaming/removing its node. Ambiguous/missing managed rules cause alignment to fail rather than guess.
 
-Only single-device IPv4 rules inside the reference `/24` are supported. Policy-group targets, arbitrary CIDRs, IPv6 source addresses and multiple LANs require adaptation. No proxy subscriptions or provider accounts are included.
+Single-device IPv4 /32 rules are supported within one configurable LAN (CIDR parameters /8 through /30, default /24). Wider subnet integration still needs router testing. Policy-group targets, arbitrary CIDRs, IPv6 source addresses and multiple LANs require adaptation. No proxy subscriptions or provider accounts are included.
 
 ## 5. Troubleshooting
 
@@ -68,3 +68,9 @@ Write actions require authenticated LuCI and a POST CSRF token. This is privileg
 Snapshots contain private proxy/DHCP data and stay on the router. Never upload them. Rollback is not a transaction engine; concurrent edits, process crashes, failed service startups or power loss can leave runtime state inconsistent even when files are restored. Keep wired/local recovery access.
 
 MAC guards may block external IPv6. Reference routing retains private/local destinations rather than proxying every packet. Client Private DNS and application DoH bypass port-53 interception. Test these separately: ready listeners and a successful egress test do not establish absence of DNS/IPv6 leaks.
+
+## 7. Status and job recovery
+
+Form edits or catalog changes invalidate previews. Binding changes clear old probe results. An unavailable controller is shown as unavailable, not zero connections. Status reads have a 15-second timeout.
+
+The current tab stores the pending job ID in session storage and resumes polling after reload. If polling reaches its retry limit, use the resume button; new submissions remain blocked until the job ends. If session storage is disabled, retain the displayed job ID. Warning summaries include only time, managed IP and error category; inspect detailed logs locally on the router.
