@@ -1,0 +1,195 @@
+def ip_elements(ips)
+ a=ips.map{|ip|ip.split('.').map(&:to_i).inject(0){|n,v|n*256+v}}.uniq.sort
+ ranges=[];a.each{|n|if ranges.last && ranges.last[1]+1==n; ranges.last[1]=n;else;ranges<<[n,n];end}
+ fmt=->(n){[24,16,8,0].map{|b|(n>>b)&255}.join('.')}
+ ranges.map{|x,y|x==y ? fmt.call(x) : fmt.call(x)+'-'+fmt.call(y)}.join(', ')
+end
+require 'yaml'
+BASE='/etc/phone-dns'
+JOBS=BASE+'/jobs'
+def json(x)
+ case x
+ when Hash;'{'+x.map{|k,v|json(k.to_s)+':'+json(v)}.join(',')+'}'
+ when Array;'['+x.map{|v|json(v)}.join(',')+']'
+ when String;'"'+x.gsub(/["\\\x00-\x1f]/){|c|c=='"' ? '\\"' : c=='\\' ? '\\\\' : '\\u%04x'%c.ord}+'"'
+ when TrueClass;'true';when FalseClass;'false';when NilClass;'null';else;x.to_s;end
+end
+def atomic(path,data)
+ t=path+'.panel-tmp';File.open(t,'w',0600){|f|f.write(data)};File.rename(t,path)
+end
+def run(*args)
+ o=IO.popen(args+[{err:[:child,:out]}],&:read);raise "命令执行失败：#{args.first}" unless $?.success?;o
+end
+def quiet(*args)
+ IO.popen(args+[{err:File::NULL}],&:read).to_s
+end
+def source_path
+ p=quiet('uci','-q','get','openclash.config.config_path').strip
+ raise '当前配置路径不在 OpenClash 配置目录中' unless p.start_with?('/etc/openclash/config/') && p.end_with?('.yaml') && !p.include?('..')
+ p
+end
+def tracked
+ [source_path,'/etc/config/dhcp',BASE+'/mapping.yaml',BASE+'/devices.yaml','/etc/nftables.d/90-phone-fixed-egress.nft',BASE+'/config.json',BASE+'/listeners.yaml']+Dir.glob(BASE+'/group-*.conf')
+end
+def revision
+ s=tracked.map{|p|p+"\0"+(File.exist?(p) ? File.read(p) : '')}.join("\0")
+ IO.popen(['sha256sum'],'r+') {|i|i.write(s);i.close_write;i.read.split.first}
+end
+def hosts
+ out=[];h=nil
+ quiet('uci','export','dhcp').each_line do |l|
+  if l =~ /^config\s+(\w+)(?:\s+'([^']+)')?/
+   h=$1=='host' ? {} : nil;out<<h if h
+  elsif h && l =~ /^\s*(?:option|list)\s+(\w+)\s+'([^']*)'/
+   h[$1]=[h[$1],$2].compact.join(' ')
+  end
+ end
+ out
+end
+def valid_input(req)
+ raise '请求格式无效' unless req.is_a?(Hash)
+ name=req['name'].to_s.strip;ip=req['ip'].to_s.strip;mac=req['mac'].to_s.strip.downcase;gid=req['group'].to_s
+ raise '设备名称需要 1～40 个字符，不能包含控制字符' unless (1..40).include?(name.length) && !name.match?(/[\x00-\x1f\x7f]/)
+ raise '固定 IP 必须为 192.168.1.2～254，不能填写路由器地址' unless ip.match?(/\A192\.168\.1\.(?:[1-9][0-9]{0,2})\z/) && (2..254).include?(ip.split('.').last.to_i)
+ raise 'MAC 地址格式无效，请填写六组十六进制（冒号分隔）' unless mac.match?(/\A(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\z/)
+ raise '不能使用组播、广播或全零 MAC' if mac=='00:00:00:00:00:00' || mac[0,2].to_i(16).odd?
+ raise '请选择已有独立 DNS 分组' unless gid.match?(/\A[1-9][0-9]{0,2}\z/) && gid.to_i<=100
+ {'name'=>name,'ip'=>ip,'mac'=>mac,'group'=>gid.to_i}
+end
+def catalog
+ mapping=YAML.load_file(BASE+'/mapping.yaml')
+ source=YAML.load_file(source_path,aliases:true)
+ names=(source['proxies']||[]).map{|n|n['name']}.grep(/\A手机[-－]/).uniq
+ id=mapping.map{|g|g['id']}.max.to_i
+ names.each do |name|
+  next if mapping.any?{|g|g['node']==name}
+  id+=1;raise '手机节点数量超过支持范围' if id>100
+  mapping<<{'id'=>id,'node'=>name,'ips'=>[],'dns_port'=>15300+id,'socks_port'=>18000+id}
+ end
+ mapping
+end
+def plan(req)
+ d=valid_input(req)
+ raise '存在未保存的 DHCP 配置，请先保存或撤销后重试' unless quiet('uci','changes','dhcp').strip.empty?
+ mapping=catalog;g=mapping.find{|x|x['id']==d['group']};raise 'DNS 分组不存在' unless g
+ raise '该 IP 已在面板管理范围内，请勿重复添加' if mapping.any?{|x|x['ips'].include?(d['ip'])}
+ source=YAML.load_file(source_path,aliases:true)
+ existing=(source['rules']||[]).select{|r|r.start_with?('SRC-IP-CIDR,') && r.split(',')[1]==d['ip']+'/32'}
+ raise '已有来源规则重复或绑定了其他节点' unless existing.empty? || (existing.size==1 && existing.first.split(',')[2]==g['node'])
+ raise '所选节点已不存在' unless (source['proxies']||[]).any?{|n|n['name']==g['node']}
+ hs=hosts;adopt=false
+ hs.each do |h|
+  macs=h.fetch('mac','').downcase.split(/\s+/)
+  if h['ip']==d['ip'] || macs.include?(d['mac'])
+   raise 'IP 或 MAC 与已有静态租约冲突' unless h['ip']==d['ip'] && macs.include?(d['mac'])
+   adopt=true
+  end
+ end
+ leases=File.readlines('/tmp/dhcp.leases').map(&:split) rescue []
+ raise '该 IP 当前租给了其他设备，请换一个空闲 IP' if leases.any?{|l|l[2]==d['ip'] && l[1].downcase!=d['mac']}
+ raise '该 MAC 当前使用其他 IP，请先在 DHCP 中迁移租约，避免断网' if leases.any?{|l|l[1].downcase==d['mac'] && l[2]!=d['ip']}
+ neighbors=quiet('ip','neigh','show','dev','br-lan')
+ neighbors.each_line do |line|
+  a=line.split; next unless a.first==d['ip'] && a.include?('lladdr')
+  seen=a[a.index('lladdr')+1].downcase
+  raise '邻居表显示该 IP 被其他 MAC 占用' if seen!=d['mac']
+ end
+ d.merge('node'=>g['node'],'dns_port'=>g['dns_port'],'adopt_lease'=>adopt,'revision'=>revision,
+ 'warning'=>'可选择全部手机节点，缺少的独立 DNS 分组会在应用时创建；应用会重载防火墙并短暂重启 OpenClash。请确保手机使用固定的 Wi-Fi MAC，地址未被静态配置的离线设备占用。')
+end
+def nft_text(mapping,hs)
+ ips=mapping.flat_map{|g|g['ips']}.uniq.sort_by{|ip|ip.split('.').map(&:to_i)}
+ macs=ips.flat_map{|ip|h=hs.find{|x|x['ip']==ip};raise "缺少 #{ip} 的静态租约 MAC" unless h;h.fetch('mac','').downcase.split}.uniq
+ raise 'MAC 数据异常' unless macs.all?{|m|m.match?(/\A(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\z/)}
+ s="set codex_phone4 {\n type ipv4_addr\n flags interval\n elements = { #{ip_elements(ips)} }\n}\n"
+ s+="set codex_phone_mac {\n type ether_addr\n elements = { #{macs.join(', ')} }\n}\n"
+ s+="chain codex_phone_guard {\n type filter hook forward priority -10; policy accept;\n iifname \"br-lan\" oifname != \"br-lan\" ip saddr @codex_phone4 counter drop comment \"Phone fixed egress: no direct forwarding\"\n iifname \"br-lan\" oifname != \"br-lan\" ether saddr @codex_phone_mac counter drop comment \"Phone fixed egress: IPv6 and address-change guard\"\n}\n"
+ s+="chain codex_phone_dns {\n type nat hook prerouting priority -101; policy accept;\n"
+ mapping.reject{|g|g['ips'].empty?}.each{|g|s+=" iifname \"br-lan\" ip saddr { #{g['ips'].join(', ')} } meta l4proto { tcp, udp } th dport 53 counter redirect to :#{g['dns_port']} comment \"Phone DNS group #{g['id']}\"\n"}
+ s+"}\n"
+end
+def jobwrite(id,data)
+ atomic(JOBS+'/'+id+'.yaml',data.to_yaml)
+end
+def apply_worker(id)
+ job=YAML.load_file(JOBS+'/'+id+'.yaml');backup=nil;snaps={}
+ lock=File.open('/var/lock/phone-panel.lock','w',0600)
+  raise '另一个设备变更正在应用，请稍后重试' unless lock.flock(File::LOCK_EX|File::LOCK_NB)
+  req=job['request'];p=plan(req);raise '配置已发生变化，请重新预览后应用' unless req['revision']==p['revision']
+  tracked.each{|f|snaps[f]=File.exist?(f) ? File.binread(f) : nil}
+  backup='/root/phone-panel-changes';Dir.mkdir(backup,0700) unless Dir.exist?(backup);backup+='/'+id;Dir.mkdir(backup,0700)
+  snaps.each_with_index{|(f,s),i|File.write(backup+"/file-#{i}",s) if s}
+  File.write(backup+'/manifest.yaml',snaps.keys.to_yaml)
+  jobwrite(id,{'status'=>'running','message'=>'正在更新并检查配置','backup'=>backup})
+  cfg=source_path;a=YAML.load_file(cfg,aliases:true);mapping=catalog;mapping.find{|g|g['id']==p['group']}['ips']<<p['ip']
+  idx=a['rules'].index{|r|!r.start_with?('SRC-IP-CIDR,')}||0
+  a['rules'].insert(idx,"SRC-IP-CIDR,#{p['ip']}/32,#{p['node']}") unless a['rules'].include?("SRC-IP-CIDR,#{p['ip']}/32,#{p['node']}")
+  unless p['adopt_lease']
+   sec='phone_panel_'+p['ip'].split('.').last
+   raise 'DHCP 配置段名称冲突' unless quiet('uci','-q','get','dhcp.'+sec).empty?
+   run('uci','set',"dhcp.#{sec}=host")
+   {'mac'=>p['mac'],'ip'=>p['ip'],'name'=>'phone-'+p['ip'].split('.').last}.each{|k,v|run('uci','set',"dhcp.#{sec}.#{k}=#{v}")}
+   run('uci','commit','dhcp')
+  end
+  devices=File.exist?(BASE+'/devices.yaml') ? (YAML.load_file(BASE+'/devices.yaml') || []) : []
+  devices<<p.select{|k,v|%w[name ip mac group].include?(k)}
+  atomic(cfg,a.to_yaml);atomic(BASE+'/mapping.yaml',mapping.to_yaml);atomic(BASE+'/devices.yaml',devices.to_yaml)
+  atomic('/etc/nftables.d/90-phone-fixed-egress.nft',nft_text(mapping,hosts))
+  run('/etc/openclash/clash','-t','-d','/etc/openclash','-f',cfg)
+  run('/usr/bin/ruby',BASE+'/render-dns.rb')
+  run('/usr/bin/sing-box','check','-c',BASE+'/config.json')
+  run('fw4','check')
+  jobwrite(id,{'status'=>'running','message'=>'检查通过，正在应用网络配置','backup'=>backup})
+  run('/etc/init.d/firewall','reload')
+  run('/etc/init.d/openclash','stop')
+  File.rename('/tmp/openclash.change','/tmp/phone-panel-quickstart-'+id) if File.exist?('/tmp/openclash.change')
+  run('/etc/init.d/openclash','start')
+  run('/etc/init.d/phone-dns','restart')
+  run('/etc/init.d/dnsmasq','reload')
+  quiet('nft','flush','flowtable','inet','fw4','ft')
+  60.times do
+   break unless quiet('pidof','clash').strip.empty?
+   sleep 1
+  end
+  r=YAML.load_file('/etc/openclash/'+File.basename(cfg),aliases:true)
+  raise '运行绑定规则未生效' unless r['rules'].include?("SRC-IP-CIDR,#{p['ip']}/32,#{p['node']}")
+  raise '嗅探来源排除未同步' unless r.dig('sniffer','skip-src-address').to_a.include?(p['ip']+'/32')
+  raise 'DNS 防火墙规则未同步' unless quiet('nft','list','chain','inet','fw4','codex_phone_dns').include?(p['ip'])
+  raise '固定出口保护未同步' unless run('nft','get','element','inet','fw4','codex_phone4','{',p['ip'],'}')
+  jobwrite(id,{'status'=>'done','message'=>'设备已添加，绑定、DNS 与防直连配置已同步。请让手机重新连接 Wi-Fi，并手动检测该组 DNS / 出口。','device'=>p.select{|k,v|%w[name ip mac group node].include?(k)},'backup'=>backup})
+rescue =>e
+ recovered=false
+ if backup && !snaps.empty?
+  begin
+   snaps.each{|f,s|s ? atomic(f,s) : (File.delete(f) if File.exist?(f))}
+   quiet('uci','revert','dhcp');run('fw4','check');run('/etc/init.d/firewall','reload');run('/etc/init.d/openclash','stop')
+   File.delete('/tmp/openclash.change') if File.exist?('/tmp/openclash.change')
+   run('/etc/init.d/openclash','start');run('/etc/init.d/phone-dns','restart');run('/etc/init.d/dnsmasq','reload');recovered=true
+  rescue;end
+ end
+ jobwrite(id,{'status'=>'failed','message'=>e.message,'rolled_back'=>recovered,'backup'=>backup})
+ensure
+ lock.close if lock
+end
+begin
+ mode=ARGV.shift
+ if mode=='worker'
+  id=ARGV.shift;raise 'invalid job' unless id.to_s.match?(/\A\d{14}-[a-f0-9]{12}\z/);apply_worker(id);exit
+ elsif mode=='job'
+  id=ARGV.shift;raise '任务 ID 无效' unless id.to_s.match?(/\A\d{14}-[a-f0-9]{12}\z/)
+  p=YAML.load_file(JOBS+'/'+id+'.yaml');p.delete('request');puts json(p);exit
+ end
+ input=YAML.safe_load(File.read(ARGV.fetch(0)),aliases:false);p=plan(input)
+ if mode=='preview'
+  puts json({'ok'=>true,'plan'=>p})
+ elsif mode=='apply'
+  raise '请先预览配置' unless input['revision']==p['revision']
+  Dir.mkdir(JOBS,0700) unless Dir.exist?(JOBS)
+  id=Time.now.strftime('%Y%m%d%H%M%S')+'-'+File.binread('/dev/urandom',6).unpack1('H*')
+  jobwrite(id,{'status'=>'queued','message'=>'等待应用','request'=>p})
+  pid=Process.spawn('/usr/bin/ruby',__FILE__,'worker',id,in:File::NULL,out:File::NULL,err:File::NULL,pgroup:true)
+  Process.detach(pid);puts json({'ok'=>true,'job'=>id})
+ else;raise '不支持的操作';end
+rescue =>e
+ puts json({'error'=>e.message})
+end
