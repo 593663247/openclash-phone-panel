@@ -1,5 +1,15 @@
 # 更新日志 / Changelog
 
+## [1.3.0] — 2026-11-01
+
+- 在线升级只选择固定仓库的正式 Release，解析实际标签提交，并核对快进关系、版本、CI、发布附件身份、大小与 SHA-256；不再直接追随 main。
+- 发布独立在线升级包，声明完整文件、目标路径、权限、逐文件校验和及升级器格式要求。安装前检查所有文件，安装后再次核验内容和权限，新文件不再依赖旧版硬编码安装列表。
+- 将升级及程序恢复接入统一后台任务和阶段记录；网页关闭后继续执行，失败明确报告文件和服务恢复结果。
+- 持久记录安装前程序快照、受保护配置摘要和服务基线。未完成安装或恢复未验收时阻止后续升级，并提供程序恢复入口；不自动重放迁移。
+- 为安装、备份与恢复核对空间，下载/校验失败不修改原程序。程序升级不修改设备、节点、DHCP 和 OpenClash 配置，不自动执行设备持久化迁移。
+- 增加七个旧版布局的打包升级夹具、损坏下载、发布变化、缺少文件、权限/格式冲突、磁盘写满、服务恢复失败及真实 SIGKILL 中断回归。
+- 标签发布必须先通过完整 Linux CI，再构建同一提交的安装包，上传完整草稿后发布；已正式发布的版本不覆盖。物理路由器断电、重启和业务验证仍需部署验收。
+
 ## [1.2.1] — 2026-11-01
 
 - Repair the independent boot guard omitted by older online updater processes, using only the SHA-256 verified script from the installed source bundle. Enable it before activating persistent bindings; reject missing, altered or linked repair sources.

@@ -1,4 +1,4 @@
-> Release: **v1.0.0** · opkg: **1.0.0-1** · [Changelog](CHANGELOG.md) · [Downloads](https://github.com/593663247/openclash-phone-panel/releases/tag/v1.0.0)
+> Release: **v1.3.0** · opkg: **1.3.0-1** · [Changelog](CHANGELOG.md) · [Downloads](https://github.com/593663247/openclash-phone-panel/releases/tag/v1.3.0)
 
 # OpenClash Phone Panel
 
@@ -100,3 +100,6 @@ MIT License。无 OpenClash / ImmortalWrt 官方背书。
 ### 设备绑定持久化（1.2.0）
 
 已有设备升级后，请先到“管理维护 → 设备绑定持久化”预览、核对并确认迁移。绑定独立保存，配置加载前受控合并，提供独立启动保护及完整验收快照恢复；冲突/损坏不会自动转直连或清空记录。参见 [迁移与恢复说明](docs/PERSISTENCE.md)。真实断电和全部固件兼容仍需实机验收。
+
+
+在线升级：从 1.3.0 起使用正式 Release、完整文件清单及统一后台任务。旧版首次切换建议安装完整 IPK。参见 [在线升级与恢复](docs/ONLINE-UPDATES.md)。

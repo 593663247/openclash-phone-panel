@@ -149,33 +149,35 @@ function attach(api){
   const data=versionData,up=data.update||{};paintPublished();
   text('pf-version',data.version?'v'+data.version:'版本未设置');text('pf-version-source','源码标记：'+(data.current?data.current.slice(0,12):'未设置'));
   text('pf-update-message',up.message||'点击检查 GitHub 更新；不会自动安装或改动网络。');
-  $('pf-upgrade').disabled=versionBusy||!up.can_upgrade;
+  $('pf-update-check').disabled=versionBusy||api.busy();
+  $('pf-upgrade').disabled=versionBusy||api.busy()||!up.can_upgrade;
   const pre=up.preflight; $('upgrade-preflight').innerHTML=pre?'<p>升级预检查 · '+esc(date(pre.at))+'</p>'+pre.checks.map(c=>'<span class="console-check '+(c.ok?'':'bad')+'">'+esc((c.ok?'✓ ':'! ')+c.name+' · '+c.detail)+'</span>').join(''):'';
-  $('pf-restore').disabled=versionBusy||!(data.releases||[]).some(r=>r.status==='installed'&&/^[a-f0-9]{40}$/.test(r.from||''));
+  $('pf-restore').disabled=versionBusy||!(data.releases||[]).some(r=>(r.status==='installed'||r.recoverable)&&/^[a-f0-9]{40}$/.test(r.from||''));
   const selected=$('pf-release').value;
-  $('pf-release').innerHTML=(data.releases||[]).filter(r=>r.status==='installed'&&/^[a-f0-9]{40}$/.test(r.from||'')).map(r=>'<option value="'+esc(r.id)+'">'+esc(date(r.at)+' → '+r.from.slice(0,12))+'</option>').join('');
+  $('pf-release').innerHTML=(data.releases||[]).filter(r=>(r.status==='installed'||r.recoverable)&&/^[a-f0-9]{40}$/.test(r.from||'')).map(r=>'<option value="'+esc(r.id)+'">'+esc((r.recoverable?'未完成升级 · 恢复前版本：':'')+date(r.at)+' → '+r.from.slice(0,12))+'</option>').join('');
   if([...$('pf-release').options].some(o=>o.value===selected))$('pf-release').value=selected;
  }
  async function versions(){try{versionData=await api.get('versions');paintVersions()}catch(e){message('pf-update-message',e)}}
  $('pf-update-check').onclick=async function(){
-  if(versionBusy)return;const releaseRead=published(true);versionBusy=true;this.disabled=true;paintVersions();text('pf-update-message','正在核对固定仓库 main、可快进关系与 CI…');
-  try{const data=await api.post('check_update',{});versionData={...(versionData||{}),current:data.current,update:data};paintVersions()}
+  if(versionBusy||api.busy())return;const releaseRead=published(true);versionBusy=true;this.disabled=true;paintVersions();text('pf-update-message','正在核对正式 Release、完整安装包及 CI…');
+  try{const data=await api.post('check_update',{});if(data.operation_id){versionData={...(versionData||{}),update:{can_upgrade:false,message:'正在后台核对正式发布；可刷新页面，在任务与恢复查看结果。'}};if(api.watchOperation)api.watchOperation(data.operation_id)}else{versionData={...(versionData||{}),current:data.current,update:data}}paintVersions()}
   catch(e){versionData={...(versionData||{}),update:{can_upgrade:false,message:e.message}};message('pf-update-message',e)}finally{await releaseRead;versionBusy=false;this.disabled=false;paintVersions()}
  };
  async function releaseTask(action,payload,warning){
   if(versionBusy||api.busy()||!root.confirm(warning))return;versionBusy=true;paintVersions();
-  try{const data=await api.post(action,payload);text('pf-update-message','任务 '+data.id+' 已提交；请在维护任务记录查看结果。升级前自动备份，失败会尝试恢复原程序。')}
+  try{const data=await api.post(action,payload);text('pf-update-message','后台升级任务已提交；可刷新或关闭页面，在任务与恢复中查看进度。');if(data.operation_id&&api.watchOperation)api.watchOperation(data.operation_id)}
   catch(e){message('pf-update-message',e)}finally{versionBusy=false;$('pf-upgrade').disabled=true;$('pf-restore').disabled=true}
  }
- $('pf-upgrade').onclick=()=>{const up=versionData&&versionData.update;if(up&&up.can_upgrade)releaseTask('upgrade',{target:up.latest,confirm:'UPGRADE'},'确认升级到 '+up.latest.slice(0,12)+'？将先备份，再更新程序和监测服务，保留现有设备与节点配置。')};
+ $('pf-upgrade').onclick=()=>{const up=versionData&&versionData.update;if(up&&up.can_upgrade)releaseTask('upgrade',{target:up.latest,fingerprint:up.fingerprint,confirm:'UPGRADE'},'确认升级到正式发布 '+(up.tag||up.latest.slice(0,12))+'？将下载并校验完整安装包、备份、安装并验收。设备配置迁移需另行确认。')};
  $('pf-restore').onclick=()=>releaseTask('restore_release',{release:$('pf-release').value,confirm:'RESTORE_CODE'},'确认恢复所选快照的程序版本？保留当前设备、租约、节点和 DNS 配置；旧版本可能不包含新功能。');
  $('pf-version-refresh').onclick=versions;
+ document.addEventListener('phone-panel-operation-complete',()=>{if($('pp').classList.contains('maintenance-page'))versions()});
  ['pf-search','pf-group','pf-region','pf-online','pf-health'].forEach(id=>{$(id).oninput=applyFilters;$(id).onchange=applyFilters});
  $('pf-filter-reset').onclick=()=>{['pf-search','pf-group','pf-region','pf-online','pf-health'].forEach(id=>$(id).value='');applyFilters()};
  $('pf-diagnostic-close').onclick=()=>{$('pf-diagnostic').hidden=true};
  if($('pp').classList.contains('maintenance-page')){versions();published()}
  function syncTasks(tasks){
-  const changed=(tasks||[]).filter(t=>['upgrade','restore_release'].includes(t.action)&&['done','failed'].includes(t.status)&&!seenTasks.has(t.id));
+  const changed=(tasks||[]).filter(t=>['check_update','upgrade','restore_release'].includes(t.action)&&['done','failed','interrupted'].includes(t.status)&&!seenTasks.has(t.id));
   changed.forEach(t=>seenTasks.add(t.id));if(changed.length)versions();
  }
  return {update,applyFilters,decorateCards,invalidateBulk,syncTasks,jobMessage:value=>text('pf-bulk-result',value)};

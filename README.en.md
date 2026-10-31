@@ -1,4 +1,4 @@
-> Release: **v1.0.0** · opkg: **1.0.0-1** · [Changelog](CHANGELOG.md) · [Downloads](https://github.com/593663247/openclash-phone-panel/releases/tag/v1.0.0)
+> Release: **v1.3.0** · opkg: **1.3.0-1** · [Changelog](CHANGELOG.md) · [Downloads](https://github.com/593663247/openclash-phone-panel/releases/tag/v1.3.0)
 
 # OpenClash Phone Panel
 
@@ -82,3 +82,6 @@ Persistent background tasks, shared apply/recovery verification, device selectio
 ### Durable device bindings (1.2.0)
 
 Existing installations must preview and confirm migration under Maintenance → Device-binding persistence. A versioned independent registry restores exact owned rules during subscription/configuration changes, with conflict rejection, an early independent forwarding guard and complete verified snapshots. Missing/corrupt policy data never silently becomes an empty installation. See [persistence and recovery](docs/PERSISTENCE.md). Physical power-loss and device/network acceptance remain deployment checks.
+
+
+Online upgrades from 1.3.0 use formal Releases, complete file manifests and durable background jobs. Install the full IPK for the initial transition from older updaters. See [online upgrade and recovery details](docs/ONLINE-UPDATES.md).

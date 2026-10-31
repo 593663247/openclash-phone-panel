@@ -47,11 +47,13 @@ fixture_directory do |root|
  rejects('Corrupted snapshot was restored'){PhoneRelease.restore_files(record['id'])}
  assert(File.read(actual)=='old','integrity failure must happen before changing any program file')
  def PhoneRelease.http_json(path)
-  return {'sha'=>'b'*40} if path=='/commits/main'
+  return {'id'=>1,'tag_name'=>'v1.3.0','draft'=>false,'prerelease'=>false,'assets'=>[{'id'=>2,'name'=>'phone-panel-update.tar.gz','digest'=>'sha256:'+'c'*64,'size'=>100,'browser_download_url'=>'https://github.com/593663247/openclash-phone-panel/releases/download/v1.3.0/phone-panel-update.tar.gz'}]} if path=='/releases/latest'
+  return {'object'=>{'type'=>'commit','sha'=>'b'*40}} if path=='/git/ref/tags/v1.3.0'
   return {'status'=>@test_comparison||'ahead'} if path.start_with?('/compare/')
-  {'workflow_runs'=>[{'path'=>'.github/workflows/ci.yml','head_sha'=>'b'*40,'status'=>'completed','conclusion'=>@test_ci||'success','run_number'=>1}]}
+  {'workflow_runs'=>[{'path'=>'.github/workflows/ci.yml','event'=>'push','head_sha'=>'b'*40,'status'=>'completed','conclusion'=>@test_ci||'success','run_number'=>1}]}
  end
  PhoneMaintenanceHealth.define_singleton_method(:preflight){{'ok'=>!@fail_preflight,'checks'=>[]}}
+ File.binwrite(PanelStore.path('/usr/share/phone-panel/VERSION'),'1.2.1')
  assert(PhoneRelease.check['can_upgrade'])
  PhoneMaintenanceHealth.instance_variable_set(:@fail_preflight,true);assert(!PhoneRelease.check['can_upgrade'],'failed local preflight blocks CI-passing update')
  PhoneMaintenanceHealth.instance_variable_set(:@fail_preflight,false)

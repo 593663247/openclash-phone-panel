@@ -49,3 +49,32 @@ jobs:
 
       - name: Windows ZIP and opkg payload validation
         run: python3 tests/test-package.py
+
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify tag and build the checked commit
+        run: |
+          test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
+          python3 scripts/build-package.py --output dist
+          cd dist
+          sha256sum -c RELEASE_SHA256SUMS.txt
+      - name: Upload complete draft then publish immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --json isDraft --jq '.isDraft' > "$RUNNER_TEMP/release-draft" 2>/dev/null; then
+            test "$(cat "$RUNNER_TEMP/release-draft")" = true
+            test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" --jq '.target_commitish')" = "$GITHUB_SHA"
+          else
+            gh release create "$GITHUB_REF_NAME" --verify-tag --target "$GITHUB_SHA" --draft --title "$GITHUB_REF_NAME" --notes-file dist/RELEASE_NOTES.zh-CN.md
+          fi
+          gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest

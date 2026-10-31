@@ -58,3 +58,8 @@ Dashboard jobs use the maintenance runtime under `/usr/share/phone-panel`. Insta
 ## 监测与程序版本恢复
 
 参见 [FEATURES.zh-CN.md](FEATURES.zh-CN.md)。升级会更新并重启独立监测服务，监测只新增自己的计数表，不更改业务规则；原 OpenClash/DNS 服务继续运行。网页程序恢复保留现有设备配置，完整文件合并恢复仍是维护命令的单独操作。
+
+
+## 正式发布在线升级（1.3.0 起）
+
+网页升级与程序恢复采用独立的清单、事务和后台任务流程，不等同于上面的手动维护脚本。详情见 [在线升级与恢复](ONLINE-UPDATES.md)。升级不会自动执行设备配置迁移。

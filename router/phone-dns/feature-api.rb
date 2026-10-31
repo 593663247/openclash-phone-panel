@@ -26,15 +26,16 @@ module PhoneFeatures
    raise 'Invalid feature request' unless request.is_a?(Hash)
    case action
    when 'ack';PhoneHealth.acknowledge(group(request['group']),request['exit_ip'])
-   when 'check_update';PhoneRelease.check
+   when 'check_update'
+    PhoneOperations.start('check_update',{})
    when 'upgrade'
     cached=PhoneRelease.info['update']
-    raise '请先检查更新并等待 CI 通过' unless cached['can_upgrade'] && cached['latest']==request['target']
+    raise '请先检查更新并等待 CI 通过' unless cached['can_upgrade'] && cached['latest']==request['target']&&cached['fingerprint']==request['fingerprint']
     raise '请确认升级及本地备份' unless request['confirm']=='UPGRADE'
-    PanelTasks.execute('start','upgrade',{'target'=>request['target']})
+    PhoneOperations.start('upgrade',{'target'=>request['target'],'fingerprint'=>request['fingerprint'],'tag'=>cached['tag']})
    when 'restore_release'
     raise '请确认只恢复程序、保留设备配置' unless request['confirm']=='RESTORE_CODE'
-    PanelTasks.execute('start','restore_release',{'release'=>request['release']})
+    PhoneOperations.start('restore_release',{'release'=>request['release']})
    else;raise 'Unsupported feature operation'
    end
   end

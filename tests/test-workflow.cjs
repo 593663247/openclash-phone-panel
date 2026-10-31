@@ -25,6 +25,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),{JSDOM}=require
  records=[{id:'other',action:'device_edit',status:'interrupted',recovery_required:true,stage:'执行中断',message:'inspect backups'}];await flow.poll();assert.match($('operation-list').textContent,/不会自动重试/);assert.equal($('operation-panel').open,true);assert.match($('operation-count').textContent,/待核查记录 1/);
  records=[{id:'rollback',action:'device_edit',status:'failed',files_restored:false,runtime_restored:false,recovery_required:true,rollback_error:'first.yaml (Errno::EACCES)'}];await flow.poll();assert.match($('operation-list').textContent,/恢复详情：first.yaml/);assert.match($('operation-list').textContent,/需要人工核查/);
  records=[{id:'dhcp',action:'device_edit',status:'done',checks:{dhcp_static:true}}];await flow.poll();assert.match($('operation-list').textContent,/DHCP 静态配置验收通过/);
+ records=[{id:'upgrade',action:'upgrade',status:'done',checks:{program_files:true,program_runtime:true},program_backup:'20261101010000-abcdef123456'}];await flow.poll();assert.match($('operation-list').textContent,/程序文件、权限及服务状态验收通过/);assert.match($('operation-list').textContent,/程序恢复记录/);
  records=Array.from({length:8},(_,i)=>({id:'history-'+i,action:'node_test',subject:'fixture node',status:i===0?'failed':'done',at:100+i,result:{dns_ok:true,exit_ok:true,udp:{udp_ok:false}}}));
  $('operation-filter').value='all';$('operation-filter').onchange();await flow.poll();
  assert.doesNotMatch($('operation-list').textContent,/操作对象未记录/);

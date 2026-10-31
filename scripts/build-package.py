@@ -2,7 +2,7 @@
 """Build a deterministic opkg IPK and a Windows Explorer-compatible ZIP."""
 import argparse, hashlib, io, os, pathlib, subprocess, tarfile, zipfile, json
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-def archive(files,sort=True):
+def archive(files,sort=True,prefix='./'):
  out=io.BytesIO()
  import gzip
  with gzip.GzipFile(fileobj=out,mode='wb',mtime=0,filename='') as gz:
@@ -12,9 +12,9 @@ def archive(files,sort=True):
     parent=pathlib.PurePosixPath(name).parent
     while str(parent)!='.': dirs.add(str(parent));parent=parent.parent
    for name in sorted(dirs):
-    info=tarfile.TarInfo('./'+name);info.type=tarfile.DIRTYPE;info.mode=0o755;info.uid=info.gid=0;info.mtime=0;tar.addfile(info)
+    info=tarfile.TarInfo(prefix+name);info.type=tarfile.DIRTYPE;info.mode=0o755;info.uid=info.gid=0;info.mtime=0;tar.addfile(info)
    for name,(data,mode) in (sorted(files.items()) if sort else files.items()):
-    info=tarfile.TarInfo('./'+name);info.size=len(data);info.mode=mode;info.uid=info.gid=0;info.mtime=0;tar.addfile(info,io.BytesIO(data))
+    info=tarfile.TarInfo(prefix+name);info.size=len(data);info.mode=mode;info.uid=info.gid=0;info.mtime=0;tar.addfile(info,io.BytesIO(data))
  return out.getvalue()
 def build(version,output):
  output.mkdir(parents=True,exist_ok=True)
@@ -41,6 +41,15 @@ def build(version,output):
  'router/openclash/phone-routing.sh':('etc/openclash/custom/phone-routing.sh',0o700),
  'router/nftables/90-phone-fixed-egress.nft':('etc/nftables.d/90-phone-fixed-egress.nft',0o600)}
  for source,(dest,mode) in pairs.items():payload[dest]=((ROOT/source).read_bytes(),mode)
+ # One declarative code manifest serves online upgrades, including newly added files.
+ update_payload={name:entry for name,entry in payload.items() if name.startswith('usr/share/phone-panel/') or name.endswith(('.rb','.lua')) or name.startswith('etc/init.d/') or name=='etc/openclash/custom/phone-routing.sh' or name=='usr/lib/lua/luci/view/phone_panel.htm'}
+ update_payload.pop('usr/share/phone-panel/deployed-commit',None)
+ manifest={'schema':1,'min_updater':1,'version':version.rsplit('-',1)[0],'commit':commit,'files':[{'source':'files/'+name,'destination':'/'+name,'mode':mode,'sha256':hashlib.sha256(data).hexdigest()} for name,(data,mode) in sorted(update_payload.items())]}
+ manifest_bytes=(json.dumps(manifest,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode('utf-8')
+ payload['usr/share/phone-panel/installed-update-manifest.json']=(manifest_bytes,0o600)
+ update_archive={'release/files/'+name:entry for name,entry in update_payload.items()}
+ update_archive['release/update-manifest.json']=(manifest_bytes,0o600)
+ (output/'phone-panel-update.tar.gz').write_bytes(archive(update_archive,prefix=''))
  for name in ['mapping.yaml','devices.yaml','listeners.yaml','managed-nodes.yaml']:payload['etc/phone-dns/'+name]=(b'--- []\n',0o600)
  payload['etc/phone-dns/config.json']=(b'{}\n',0o600)
  payload['usr/share/phone-panel/deployed-commit']=(commit.encode()+b'\n',0o644)
@@ -98,9 +107,9 @@ Windows：右键 ZIP → 全部解压。把里面的 {ipkname} 上传到路由�
 安装后不会自动接管网络。先在“服务 → 手机出口与 DNS → 设置”确认网段、路由器 IP、网桥，再在“管理维护”检查并预览初始化，确认后应用。
 安装会尝试以标记块接入 OpenClash 钩子，但仍需确认 OpenClash 已启用对应自定义脚本。旧手动部署/未标记钩子将拒绝覆盖，避免破坏已有配置。
 
-已有设备升级 1.2.0 后，先在“管理维护 → 设备绑定持久化”预览并确认迁移，再使用独立绑定。请保留并启用 OpenClash 自定义覆盖/防火墙钩子；冲突或记录损坏时停止应用，可恢复上次完整验收快照。详见源码 docs/PERSISTENCE.md。
+已有设备升级 1.2.0 及后续版本后，先在“管理维护 → 设备绑定持久化”预览并确认迁移，再使用独立绑定。请保留并启用 OpenClash 自定义覆盖/防火墙钩子；冲突或记录损坏时停止应用，可恢复上次完整验收快照。详见源码 docs/PERSISTENCE.md。
 
-新增 SOCKS5 落地节点位于“主页”右侧的“设备与节点”。填写服务商提供的真实服务器、端口、账号密码和前置代理；预览后确认。随后在设备绑定中选择节点。
+在线升级：从 1.3.0 起只安装带完整文件清单的正式 GitHub Release。下载、校验、备份、安装、验收在后台执行；刷新页面后可继续查看。中断或恢复未确认会阻止继续升级，请使用版本与更新中的程序恢复入口。旧升级器首次切换建议先安装完整 IPK。程序升级不会自动执行设备迁移。\n\n新增 SOCKS5 落地节点位于“主页”右侧的“设备与节点”。填写服务商提供的真实服务器、端口、账号密码和前置代理；预览后确认。随后在设备绑定中选择节点。
 只检查语法不代表真实出口/UDP可用；真实新节点仍需绑定后检测。
 
 卸载保护：普通移除会被阻止，避免突然失去防直连保护；请先按源码 docs/MAINTENANCE.md 的停用/恢复流程处理。
@@ -138,6 +147,13 @@ Commit: {commit}
  with zipfile.ZipFile(output/zipname,'w',zipfile.ZIP_DEFLATED,allowZip64=False) as z:
   for name,data in entries.items():
    info=zipfile.ZipInfo(name,(2026,10,31,0,0,0));info.compress_type=zipfile.ZIP_DEFLATED;info.external_attr=0o100644<<16;z.writestr(info,data)
+ (output/(zipname+'.sha256')).write_text(hashlib.sha256((output/zipname).read_bytes()).hexdigest()+'  '+zipname+'\n',encoding='ascii')
+ release_files=[ipkname,zipname,'phone-panel-source.zip','phone-panel-update.tar.gz']
+ (output/'RELEASE_SHA256SUMS.txt').write_text(''.join(hashlib.sha256((output/name).read_bytes()).hexdigest()+'  '+name+'\n' for name in release_files),encoding='ascii')
+ changes=(ROOT/'CHANGELOG.md').read_text(encoding='utf-8');section=changes.split('## ['+manifest['version']+']',1)
+ details=section[1].split('\n## [',1)[0].split('\n',1)[-1].strip() if len(section)==2 else ''
+ notes=f"手机出口与 DNS 面板 v{manifest['version']}\n\n{details}\n\nWindows：下载 Windows.zip，右键全部解压，将 IPK 上传路由器安装。\n在线升级只安装正式 Release，不自动迁移设备配置。任务进度与恢复结果见管理维护。\n从旧升级器首次切换到本机制，建议先安装完整 IPK；从本版本起按 Release 文件清单更新。\n自动化回归通过不替代路由器实机断电、重启与业务验收。\n\nSource commit: {commit}\n"
+ (output/'RELEASE_NOTES.zh-CN.md').write_text(notes,encoding='utf-8')
  print(json.dumps({'ipk':str(output/ipkname),'windows_zip':str(output/zipname),'sha256':hashlib.sha256((output/zipname).read_bytes()).hexdigest(),'source_commit':commit},ensure_ascii=False))
 if __name__=='__main__':
  p=argparse.ArgumentParser();p.add_argument('--version',default=(ROOT/'VERSION').read_text().strip()+'-1');p.add_argument('--output',required=True);a=p.parse_args()

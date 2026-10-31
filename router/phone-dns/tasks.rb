@@ -26,6 +26,7 @@ module PanelTasks
   end
   if mode=='start'
    return PhoneOperations.start('initialize',{}) if arg=='initialize'
+   return PhoneOperations.start(arg,parameters) if %w[upgrade restore_release].include?(arg)
    raise 'Unsupported action' unless ACTIONS.key?(arg) || %w[upgrade restore_release].include?(arg)
    if arg=='upgrade';raise 'Invalid target version' unless parameters['target'].to_s.match?(/\A[a-f0-9]{40}\z/);end
    if arg=='restore_release';raise 'Invalid recovery ID' unless parameters['release'].to_s.match?(/\A\d{14}-[a-f0-9]{12}\z/);end

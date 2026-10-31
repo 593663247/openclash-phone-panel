@@ -2,6 +2,7 @@ require_relative 'panel-store'
 require_relative 'maintenance-health'
 require_relative 'luci-cache'
 require_relative 'binding-registry'
+require_relative 'update-package'
 
 module PhoneRelease
  REPOSITORY='593663247/openclash-phone-panel'
@@ -34,30 +35,50 @@ module PhoneRelease
   end
   PanelStore.write(file,result);result
  end
+ def self.phase(label,extra={})
+  id=ENV['PHONE_PANEL_OPERATION_ID'];return unless id.to_s.match?(ID)
+  file=PanelStore.path('/etc/phone-dns/operations/'+id+'.json');record=PanelStore.read(file,{})
+  return if record.empty?
+  PanelStore.write(file,record.merge(extra).merge('stage'=>label,'updated_at'=>Time.now.to_i))
+ end
+ def self.version
+  file=PanelStore.path('/usr/share/phone-panel/VERSION');File.file?(file) ? File.read(file).strip : ''
+ end
  def self.check
-  latest=http_json('/commits/main')['sha'].to_s
-  raise 'Invalid GitHub commit' unless latest.match?(SHA)
-  installed=current
-  comparison=installed.match?(SHA) && installed!=latest ? http_json("/compare/#{installed}...#{latest}")['status'] : 'identical'
+  candidate=PhoneUpdatePackage.candidate;latest=candidate['latest'];installed=current
+  comparison=installed.match?(SHA)&&installed!=latest ? http_json("/compare/#{installed}...#{latest}")['status'] : 'identical'
   runs=http_json("/actions/runs?head_sha=#{latest}&per_page=20").fetch('workflow_runs',[])
-  workflow=runs.select{|r|r['path'].to_s.split('@').first=='.github/workflows/ci.yml' && r['head_sha']==latest}.max_by{|r|r.fetch('run_number',0).to_i}
-  ci=workflow && workflow['status']=='completed' && workflow['conclusion']=='success'
-  data={'repository'=>REPOSITORY,'current'=>installed,'latest'=>latest,'checked_at'=>Time.now.to_i,
-   'ci_ok'=>!!ci,'ci_url'=>workflow && workflow['html_url'],'comparison'=>comparison,
-   'can_upgrade'=>installed.match?(SHA) && comparison=='ahead' && ci==true,
-   'message'=>installed==latest ? '已是 GitHub main 当前版本' : (comparison!='ahead' ? '不是可快进版本，请人工核对，未允许自动覆盖' : (ci ? '发现已通过 CI 的更新' : '新版本 CI 尚未通过，暂不可升级'))}
+  workflow=runs.select{|r|r['path'].to_s.split('@').first=='.github/workflows/ci.yml'&&r['head_sha']==latest&&r['event']=='push'}.max_by{|r|r.fetch('run_number',0).to_i}
+  ci=workflow&&workflow['status']=='completed'&&workflow['conclusion']=='success'
+  newer=version.match?(/\A\d+\.\d+\.\d+\z/)&&(candidate['tag'].delete_prefix('v').split('.').map(&:to_i)<=>version.split('.').map(&:to_i))==1
+  data=candidate.merge('repository'=>REPOSITORY,'current'=>installed,'checked_at'=>Time.now.to_i,'ci_ok'=>!!ci,'ci_url'=>workflow&&workflow['html_url'],'comparison'=>comparison,
+   'can_upgrade'=>installed.match?(SHA)&&comparison=='ahead'&&ci==true&&newer,
+   'message'=>installed==latest ? '已是最新正式发布版本' : (!newer ? '正式发布版本没有更新，未允许降级或覆盖' : comparison!='ahead' ? '版本历史不兼容，请人工核对' : ci ? '发现已通过 CI 的正式发布 '+candidate['tag'] : '正式发布的 CI 尚未通过，暂不可升级'))
   data['preflight']=PhoneMaintenanceHealth.preflight
   data['can_upgrade']&&=data['preflight']['ok']
   data['message']='升级预检查未通过，请处理下方项目' unless data['preflight']['ok']
-  PanelStore.write(PanelStore.state+'/update-cache.yaml',data)
-  data
+  unless pending_recovery.empty?
+   data['can_upgrade']=false;data['message']='上次程序升级未完成，请先在程序恢复中恢复操作前版本'
+  end
+  PanelStore.write(PanelStore.state+'/update-cache.yaml',data);data
+ end
+ def self.boot_id;File.read('/proc/sys/kernel/random/boot_id').strip;rescue Errno::ENOENT;'test';end
+ def self.pending_recovery
+  return [] unless Dir.exist?(root)
+  Dir.glob(root+'/*/record.yaml').filter_map do |file|
+   r=PanelStore.read(file,{})
+   next unless r['id'].to_s.match?(ID)&&%w[prepared installing recovering recovery_required].include?(r['status'])
+   live=r['pid'].is_a?(Integer)&&r['process_token']&&PhoneBindings.process_token(r['pid'])==r['process_token']&&r['boot']==boot_id
+   r.merge('recoverable'=>!live)
+  end
  end
  def self.records
   return [] unless Dir.exist?(root)
   Dir.glob(root+'/*/record.yaml').sort.reverse.first(12).filter_map do |path|
    r=PanelStore.read(path,{})
    next unless r['id'].to_s.match?(ID)
-   r.select{|k,_|%w[id from to at status config_backup].include?(k)}
+   pending=pending_recovery.find{|item|item['id']==r['id']}
+   r.merge('recoverable'=>pending&&pending['recoverable']).select{|k,_|%w[id from to at status config_backup recoverable files_restored runtime_restored rollback_error].include?(k)}
   end
  end
  def self.info
@@ -65,10 +86,13 @@ module PhoneRelease
   if cache['current']!=current || Time.now.to_i-cache.fetch('checked_at',0).to_i>3600
    cache['can_upgrade']=false;cache['message']='版本或检查时间已变化，请重新检查更新'
   end
+  unless pending_recovery.empty?
+   cache['can_upgrade']=false;cache['message']='上次程序升级未完成，请先在程序恢复中恢复操作前版本'
+  end
   version_path=PanelStore.path('/usr/share/phone-panel/VERSION')
   version=File.file?(version_path) ? File.read(version_path).strip : nil
   version=nil unless version.to_s.match?(/\A[0-9]+\.[0-9]+\.[0-9]+\z/)
-  {'version'=>version,'current'=>current,'repository'=>REPOSITORY,'update'=>cache,'published_release'=>PanelStore.read(PanelStore.state+'/published-release.yaml',{}),'releases'=>records}
+  {'version'=>version,'current'=>current,'repository'=>REPOSITORY,'update'=>cache,'pending_recovery'=>pending_recovery.map{|r|r.slice('id','status','recoverable')},'published_release'=>PanelStore.read(PanelStore.state+'/published-release.yaml',{}),'releases'=>records}
  end
  # A bounded TAR reader: no links, devices, traversal, arbitrary archive roots or unbounded expansion.
  def self.unpack_stream(io,destination)
@@ -159,6 +183,11 @@ module PhoneRelease
   pairs
  end
  def self.atomic_code(path,data,mode)
+  ancestor=path
+  loop do
+   raise 'Program destination cannot contain symbolic links' if File.symlink?(ancestor)
+   parent=File.dirname(ancestor);break if parent==ancestor;ancestor=parent
+  end
   PanelStore.mkdir(File.dirname(path));temporary=path+".release-tmp-#{Process.pid}-#{rand(1<<32)}"
   File.open(temporary,File::WRONLY|File::CREAT|File::EXCL,mode){|f|f.binmode;f.write(data);f.flush;f.fsync};File.chmod(mode,temporary);File.rename(temporary,path);PanelStore.sync_directory(File.dirname(path))
  ensure
@@ -169,12 +198,13 @@ module PhoneRelease
   directory=root+'/'+id;PanelStore.mkdir(directory)
   manifest=pairs.map.with_index do |(_,destination,_),index|
    raise 'Unsafe rollback destination' unless allowed_destination?(destination)
-   actual=PanelStore.path(destination);present=File.file?(actual)
+   actual=PanelStore.path(destination);raise 'Linked program destination cannot be backed up' if File.symlink?(actual)
+   present=File.file?(actual)
    PanelStore.atomic(directory+"/file-#{index}",File.binread(actual)) if present
    {'destination'=>destination,'present'=>present,'mode'=>present ? File.stat(actual).mode&0777 : 0600,'file'=>"file-#{index}",
     'sha256'=>present ? file_hash(directory+"/file-#{index}") : nil}
   end
-  record={'id'=>id,'from'=>current,'to'=>target,'at'=>Time.now.to_i,'status'=>'prepared','config_backup'=>config_backup}
+  record={'id'=>id,'from'=>current,'to'=>target,'at'=>Time.now.to_i,'status'=>'prepared','config_backup'=>config_backup,'pid'=>Process.pid,'process_token'=>PhoneBindings.process_token(Process.pid),'boot'=>boot_id}
   PanelStore.write(directory+'/manifest.yaml',manifest);PanelStore.write(directory+'/record.yaml',record)
   record
  end
@@ -193,12 +223,13 @@ module PhoneRelease
    if entry['present'];atomic_code(actual,File.binread(directory+'/'+entry['file']),entry['mode'])
    elsif File.file?(actual);File.delete(actual)
    end
+   raise 'Restored program file failed verification' unless entry['present'] ? File.file?(actual)&&file_hash(actual)==entry['sha256']&&(RUBY_PLATFORM.match?(/mswin|mingw/)||(File.stat(actual).mode&0777)==entry['mode']) : !File.exist?(actual)
   end
  end
  def self.protected_paths
   config=PanelStore.capture('uci','-q','get','openclash.config.config_path').first.strip
   raise 'Invalid active proxy configuration path' unless config.start_with?('/etc/openclash/config/') && config.end_with?('.yaml') && !config.include?('..')
-  [config,'/etc/openclash/'+File.basename(config),'/etc/config/dhcp','/etc/config/phone_panel','/etc/phone-dns/mapping.yaml',
+  [config,'/etc/openclash/'+File.basename(config),'/etc/config/dhcp','/etc/config/phone_panel','/etc/config/openclash','/etc/phone-dns/persistent-guard.yaml','/etc/phone-dns/mapping.yaml',
    '/etc/phone-dns/devices.yaml','/etc/phone-dns/managed-nodes.yaml','/etc/phone-dns/managed-bindings.yaml','/etc/phone-dns/config.json','/etc/phone-dns/listeners.yaml','/etc/nftables.d/90-phone-fixed-egress.nft']+
    Dir.glob('/etc/phone-dns/group-*.conf')+Dir.glob('/etc/openclash/custom/*').select{|p|File.file?(p)&&p!='/etc/openclash/custom/phone-routing.sh'}
  end
@@ -217,12 +248,22 @@ module PhoneRelease
   PhoneLuciCache.clear
  end
  def self.stop_monitor_for_restore(id)
-  service=PanelStore.path('/etc/init.d/phone-panel-monitor')
-  return unless File.file?(service)
   manifest=PanelStore.read(root+'/'+id+'/manifest.yaml',[])
-  previous=manifest.find{|entry|entry['destination']=='/etc/init.d/phone-panel-monitor'}
-  PanelStore.capture(service,'disable') if previous && !previous['present']
-  PanelStore.capture(service,'stop')
+  %w[phone-panel-monitor phone-panel-guard].each do |name|
+   service=PanelStore.path('/etc/init.d/'+name);next unless File.file?(service)
+   previous=manifest.find{|entry|entry['destination']=='/etc/init.d/'+name}
+   PanelStore.capture(service,'disable') if previous&&!previous['present']
+   PanelStore.capture(service,'stop') if name=='phone-panel-monitor'
+  end
+ end
+ def self.assert_health(data,baseline)
+  return unless baseline
+  raise 'Managed devices changed during program operation' unless data['device_count']==baseline['device_count']&&data['groups'].map{|g|g['id']}.sort==baseline['groups'].map{|g|g['id']}.sort
+  baseline['groups'].each do |old|
+   fresh=data['groups'].find{|g|g['id']==old['id']}
+   %w[dns_listening socks_listening binding_ok].each{|key|raise 'Listener readiness regressed' if old[key]&&!fresh[key]}
+  end
+  %w[guard_ready dns_redirect_ready].each{|key|raise 'Network protection regressed' if baseline[key]&&!data[key]}
  end
  def self.health_check
   raw=PanelStore.run('/usr/bin/ruby',PanelStore.path('/etc/phone-dns/panel-status.rb'))
@@ -231,28 +272,47 @@ module PhoneRelease
   # Listener state need not be healthy before an update; code updates must not disable it.
   data
  end
- def self.transaction(pairs,target,config_backup:'',protected:[],activator:nil,validator:nil)
+ class InstallError < StandardError
+  attr_reader :result
+  def initialize(result);@result=result;super(result['error']);end
+ end
+ def self.transaction(pairs,target,config_backup:'',protected:[],activator:nil,validator:nil,recovery_validator:nil,baseline:nil)
   before=hashes(protected);record=snapshot(pairs,target,config_backup);directory=root+'/'+record['id']
   marker=PanelStore.path('/usr/share/phone-panel/deployed-commit');previous=current
+  record.merge!('status'=>'installing','protected_before'=>before,'baseline'=>baseline);PanelStore.write(directory+'/record.yaml',record)
+  phase('备份完成，安装程序文件',{'program_backup'=>record['id']})
   begin
    pairs.each{|from,to,mode|atomic_code(PanelStore.path(to),File.binread(from),mode)}
+   phase('核对所有已安装文件与权限');PhoneUpdatePackage.verify_installed(pairs)
    atomic_code(marker,target+"\n",0600)
+   phase('启用程序服务并验收')
    activator.call if activator
    validator.call if validator
    raise 'Protected network configuration changed during update' unless hashes(protected)==before
-   record['status']='installed';PanelStore.write(directory+'/record.yaml',record)
-   record
-  rescue
-   stop_monitor_for_restore(record['id']) if activator
-   restore_files(record['id']);atomic_code(marker,previous+"\n",0600)
-   activator.call if activator
-   record['status']='rolled_back';PanelStore.write(directory+'/record.yaml',record)
-   raise
+   record['status']='installed';PanelStore.write(directory+'/record.yaml',record);record
+  rescue=>failure
+   phase('升级失败，恢复操作前程序')
+   record.merge!('status'=>'recovering','error'=>failure.message);PanelStore.write(directory+'/record.yaml',record)
+   files_ok=false;runtime_ok=false;recovery_error=nil
+   begin
+    stop_monitor_for_restore(record['id']) if activator
+    restore_files(record['id']);atomic_code(marker,previous+"\n",0600)
+    files_ok=current==previous
+    raise 'Original version marker was not restored' unless files_ok
+    activator.call if activator
+    recovery_validator.call if recovery_validator
+    raise 'Protected network configuration changed during recovery' unless hashes(protected)==before
+    runtime_ok=true
+   rescue=>e;recovery_error=e.message;end
+   record.merge!('status'=>files_ok&&runtime_ok ? 'rolled_back' : 'recovery_required','files_restored'=>files_ok,'runtime_restored'=>runtime_ok,'rollback_error'=>recovery_error)
+   PanelStore.write(directory+'/record.yaml',record)
+   raise InstallError.new({'error'=>failure.message,'program_backup'=>record['id'],'files_restored'=>files_ok,'runtime_restored'=>runtime_ok,'recovery_required'=>!(files_ok&&runtime_ok),'rollback_error'=>recovery_error})
   end
  end
  def self.validate_source(source)
   entries(source)
   Dir.glob(source+'/{router/phone-dns,scripts}/*.rb').each{|p|PanelStore.run('/usr/bin/ruby','-c',p)}
+  Dir.glob(source+'/router/phone-dns/*.init').each{|p|PanelStore.run('sh','-n',p)}
   Dir.glob(source+'/scripts/*.sh').each{|p|PanelStore.run('sh','-n',p)}
   %w[controller/phone_panel.lua model/cbi/phone_panel_settings.lua].each do |file|
    path=source+'/router/luci/'+file
@@ -261,37 +321,87 @@ module PhoneRelease
   Dir.glob(source+'/router/phone-dns/*.lua').each{|path|PanelStore.run('lua','-e',"assert(loadfile(#{PanelStore.json(path)}))")}
   PanelStore.run('sh',source+'/scripts/maintenance.sh','doctor')
  end
- def self.install_local(source,target)
+ def self.install_local(source,target,pairs:nil,expected_current:nil)
   raise 'Invalid source commit' unless target.to_s.match?(SHA)
   PanelStore.with_lock(PanelStore.path('/var/lock/phone-panel.lock'),true) do
-   validate_source(source)
+   raise '安装版本已变化，请重新检查更新' if expected_current&&current!=expected_current
+   raise '上次程序升级尚未恢复，请先恢复操作前版本' unless pending_recovery.empty?
+   phase('检查程序语法、依赖与可用空间');validate_source(source)
+   protected=protected_paths;install_pairs=pairs||entries(source)
+   new_bytes=install_pairs.sum{|from,_,_|File.size(from)}
+   old_bytes=install_pairs.sum{|_,to,_|f=PanelStore.path(to);File.file?(f) ? File.size(f) : 0}
+   protected_bytes=protected.sum{|p|f=PanelStore.path(p);File.file?(f) ? File.size(f) : 0}
+   free=PhoneMaintenanceHealth.space('/root')
+   raise '安装、备份和恢复所需空间不足，原版本未修改' unless free&&free>=new_bytes+old_bytes*2+protected_bytes+16*1024*1024
    backup=PanelStore.run('sh',source+'/scripts/maintenance.sh','backup').strip
    protected=protected_paths
    old=health_check;old_groups=old['groups'].map{|g|g['id']};old_devices=old['device_count']
    pids=PanelStore.capture('pidof','clash','sing-box','dnsmasq').first.split.sort
-   transaction(entries(source),target,config_backup:backup,protected:protected,activator:method(:activate),validator:lambda{
+   validate_runtime=lambda do
     data=health_check
-    raise 'Managed devices changed during update' unless data['device_count']==old_devices && data['groups'].map{|g|g['id']}==old_groups
+    raise 'Managed devices changed during update' unless data['device_count']==old_devices&&data['groups'].map{|g|g['id']}==old_groups
     old['groups'].each do |group|
      new_group=data['groups'].find{|g|g['id']==group['id']}
-     %w[dns_listening socks_listening binding_ok].each{|key|raise 'Listener readiness regressed' if group[key] && !new_group[key]}
+     %w[dns_listening socks_listening binding_ok].each{|key|raise 'Listener readiness regressed' if group[key]&&!new_group[key]}
     end
-    %w[guard_ready dns_redirect_ready].each{|key|raise 'Network protection regressed' if old[key] && !data[key]}
+    %w[guard_ready dns_redirect_ready].each{|key|raise 'Network protection regressed' if old[key]&&!data[key]}
     raise 'Network services were unexpectedly restarted' unless PanelStore.capture('pidof','clash','sing-box','dnsmasq').first.split.sort==pids
-   })
+   end
+   transaction(install_pairs,target,config_backup:backup,protected:protected,activator:method(:activate),validator:validate_runtime,recovery_validator:validate_runtime,baseline:old.slice('device_count','groups','guard_ready','dns_redirect_ready'))
   end || raise('Another configuration task is running')
  end
- def self.upgrade(target)
+ def self.discard_stage(directory)
+  Dir.children(directory).each do |name|
+   file=directory+'/'+name
+   File.directory?(file)&&!File.symlink?(file) ? discard_stage(file) : File.delete(file)
+  end
+  Dir.rmdir(directory)
+ end
+ def self.upgrade(target,fingerprint:nil)
   raise 'Invalid target commit' unless target.to_s.match?(SHA)
-  preflight=PhoneMaintenanceHealth.preflight;raise '升级预检查未通过' unless preflight['ok']
+  phase('核对正式 Release、版本与 CI')
   checked=check
-  raise 'Update changed or CI is not ready; check again' unless checked['can_upgrade'] && checked['latest']==target
-  temp=PanelStore.ram+'/release-'+target;PanelStore.mkdir(temp)
-  archive=temp+'/source.tgz'
+  raise '正式发布已变化或未通过检查，请重新检查更新' unless checked['can_upgrade']&&checked['latest']==target&&fingerprint.to_s.match?(/\A[a-f0-9]{64}\z/)&&checked['fingerprint']==fingerprint
+  temp=PanelStore.ram+'/release-'+target+'-'+Random.bytes(6).unpack1('H*');PanelStore.mkdir(temp)
+  archive=temp+'/update.tgz';phase('下载正式发布安装包')
   PanelStore.run('curl','--noproxy','','-fLsS','--proto','=https','--proto-redir','=https','--connect-timeout','5','--max-time','90',
-   '--max-filesize','20971520','-o',archive,"https://api.github.com/repos/#{REPOSITORY}/tarball/#{target}")
-  source=temp+'/source';extract(archive,source)
-  install_local(source,target)
+   '--max-filesize','20971520','-o',archive,checked['asset_url'])
+  phase('校验下载大小与 SHA-256')
+  raise '下载包大小或 SHA-256 不符，原版本未修改' unless File.size(archive)==checked['asset_size']&&Digest::SHA256.file(archive).hexdigest==checked['asset_sha256']
+  source=temp+'/package';extract(archive,source);phase('验证完整文件清单与版本兼容性')
+  pairs=PhoneUpdatePackage.entries(source,target,checked['tag'])
+  record=install_local(source+'/files/usr/share/phone-panel',target,pairs:pairs,expected_current:checked['current'])
+  {'ok'=>true,'message'=>'正式发布已安装，文件、权限及服务验收通过；设备配置保持不变。','program_backup'=>record['id'],'checks'=>{'program_files'=>true,'program_runtime'=>true}}
+ ensure
+  if defined?(temp)&&temp&&File.directory?(temp)
+   begin
+    raise 'Unsafe temporary release directory' unless File.dirname(temp)==PanelStore.ram&&File.basename(temp).match?(/\Arelease-[a-f0-9]{40}-[a-f0-9]{12}\z/)&&!File.symlink?(temp)
+    discard_stage(temp)
+   rescue=>cleanup_error
+    phase('临时目录清理未完成',{'cleanup_warning'=>'请检查路由器临时空间；安装结果以验收记录为准'})
+   end
+  end
+ end
+ def self.recover_interrupted(id)
+  PanelStore.with_lock(PanelStore.path('/var/lock/phone-panel.lock'),true) do
+   record=pending_recovery.find{|r|r['id']==id&&r['recoverable']}
+   raise '此记录不可恢复或升级进程仍在运行' unless record&&record['from'].to_s.match?(SHA)
+   phase('恢复未完成升级之前的程序')
+   files_ok=false
+   begin
+    stop_monitor_for_restore(id);restore_files(id)
+    atomic_code(PanelStore.path('/usr/share/phone-panel/deployed-commit'),record['from']+"\n",0600);files_ok=true
+    activate;assert_health(health_check,record['baseline'])
+    before=record['protected_before'];raise 'Network configuration changed since upgrade; inspect manually' if before.is_a?(Hash)&&hashes(before.keys)!=before
+    record.merge!('status'=>'rolled_back','files_restored'=>true,'runtime_restored'=>true,'rollback_error'=>nil)
+    PanelStore.write(root+'/'+id+'/record.yaml',record)
+    {'ok'=>true,'message'=>'操作前程序文件已恢复，服务状态检查通过。','files_restored'=>true,'runtime_restored'=>true}
+   rescue=>e
+    record.merge!('status'=>'recovery_required','files_restored'=>files_ok,'runtime_restored'=>false,'rollback_error'=>e.message)
+    PanelStore.write(root+'/'+id+'/record.yaml',record)
+    raise InstallError.new({'error'=>e.message,'files_restored'=>files_ok,'runtime_restored'=>false,'recovery_required'=>true,'program_backup'=>id})
+   end
+  end || raise('Another configuration task is running')
  end
  def self.restore(id)
   raise 'Invalid recovery ID' unless id.to_s.match?(ID)
@@ -301,24 +411,34 @@ module PhoneRelease
    compatible=%w[/etc/phone-dns/binding-registry.rb /etc/init.d/phone-panel-guard].all?{|path|entries.any?{|e|e['destination']==path&&e['present']}}
    raise '此程序快照早于独立绑定格式，不允许降级；请保留当前保护并恢复兼容快照' unless compatible
   end
+  return recover_interrupted(id) if %w[prepared installing recovering recovery_required].include?(record['status'])
   raise 'Recovery record is unavailable' unless record['status']=='installed' && record['from'].to_s.match?(SHA)
   PanelStore.with_lock(PanelStore.path('/var/lock/phone-panel.lock'),true) do
    # Only program files are restored; later DHCP/device edits are preserved.
    paths=protected_paths;before=hashes(paths)
    manifest=PanelStore.read(root+'/'+id+'/manifest.yaml',[])
-   live_pairs=manifest.filter_map{|e|p=PanelStore.path(e['destination']);[p,e['destination'],e['mode']] if File.file?(p)}
-   rescue_record=snapshot(live_pairs,record['from'])
+   live_pairs=manifest.map{|e|[nil,e['destination'],e['mode']]}
+   rescue_record=snapshot(live_pairs,record['from']);baseline=health_check
+   rescue_record.merge!('status'=>'installing','protected_before'=>before,'baseline'=>baseline.slice('device_count','groups','guard_ready','dns_redirect_ready'));PanelStore.write(root+'/'+rescue_record['id']+'/record.yaml',rescue_record)
    begin
     stop_monitor_for_restore(id)
     restore_files(id);atomic_code(PanelStore.path('/usr/share/phone-panel/deployed-commit'),record['from']+"\n",0600)
-    activate;health_check
+    activate;assert_health(health_check,baseline)
     raise 'Network configuration changed' unless hashes(paths)==before
     record['status']='restored';PanelStore.write(root+'/'+id+'/record.yaml',record)
     rescue_record['status']='installed';PanelStore.write(root+'/'+rescue_record['id']+'/record.yaml',rescue_record)
-    {'ok'=>true,'restored'=>id,'version'=>record['from']}
-   rescue
-    restore_files(rescue_record['id']);atomic_code(PanelStore.path('/usr/share/phone-panel/deployed-commit'),rescue_record['from']+"\n",0600);activate
-    raise
+    {'ok'=>true,'restored'=>id,'version'=>record['from'],'message'=>'程序版本已恢复并通过状态验收；当前设备配置保留。'}
+   rescue=>failure
+    files_ok=false;runtime_ok=false;recovery_error=nil
+    begin
+     restore_files(rescue_record['id']);atomic_code(PanelStore.path('/usr/share/phone-panel/deployed-commit'),rescue_record['from']+"\n",0600);files_ok=true
+     activate;assert_health(health_check,baseline)
+     raise 'Network configuration changed during recovery' unless hashes(paths)==before
+     runtime_ok=true
+    rescue=>e;recovery_error=e.message;end
+    rescue_record.merge!('status'=>files_ok&&runtime_ok ? 'rolled_back' : 'recovery_required','files_restored'=>files_ok,'runtime_restored'=>runtime_ok,'rollback_error'=>recovery_error)
+    PanelStore.write(root+'/'+rescue_record['id']+'/record.yaml',rescue_record)
+    raise InstallError.new({'error'=>failure.message,'files_restored'=>files_ok,'runtime_restored'=>runtime_ok,'recovery_required'=>!(files_ok&&runtime_ok),'program_backup'=>rescue_record['id'],'rollback_error'=>recovery_error})
    end
   end || raise('Another configuration task is running')
  end
@@ -329,13 +449,22 @@ if $0==__FILE__
   action=ARGV.shift
   result=case action
    when 'check';PhoneRelease.check
-   when 'upgrade';PhoneRelease.upgrade(ARGV.fetch(0))
+   when 'check-request'
+    PhoneRelease.phase('核对正式发布、完整安装包及 CI');data=PhoneRelease.check;{'ok'=>true,'message'=>data['message']}
+   when 'upgrade';PhoneRelease.upgrade(ARGV.fetch(0),fingerprint:ARGV[1])
+   when 'upgrade-request'
+    request=YAML.safe_load(File.read(ARGV.fetch(0)),aliases:false);PhoneRelease.upgrade(request.fetch('target'),fingerprint:request.fetch('fingerprint'))
+   when 'restore-request'
+    request=YAML.safe_load(File.read(ARGV.fetch(0)),aliases:false);PhoneRelease.restore(request.fetch('release'))
    when 'restore';PhoneRelease.restore(ARGV.fetch(0))
    when 'install-local';PhoneRelease.install_local(ARGV.fetch(0),ARGV.fetch(1))
    else;raise 'Unsupported release action'
   end
   puts PanelStore.json(result)
  rescue =>e
+  if %w[check-request upgrade-request restore-request].include?(action)
+   puts PanelStore.json(e.is_a?(PhoneRelease::InstallError) ? e.result : {'error'=>e.message});exit 1
+  end
   warn e.message
   exit 1
  end

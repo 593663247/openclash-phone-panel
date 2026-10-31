@@ -16,10 +16,10 @@ async function run(){
   phones:[{ip:'192.168.1.101',mac:'02:11:22:33:44:55',hostname:'<img src=x onerror=alert(1)>',online_state:'active',online_evidence:'connection',last_seen:100,traffic:{available:true,rate_up:1234,rate_down:4321,today:{up:1,down:2},month:{up:10,down:20}}}],
   health:{exit_changed:true,baseline_ip:'203.0.113.1',exit_ip:'203.0.113.2',checks:2,failures:0,success_percent:100,history:[good],last:good}},
  {id:2,node:'手机-02-法国',region:'法国',dns_listening:false,socks_listening:true,binding_ok:true,phones:[{ip:'192.168.1.102',hostname:'Second',online_state:'unknown',traffic:{}}],health:{checks:0}}];
- const calls=[],jobs=[];let candidatePreviewResolve,delayBulk=false,ci=false,publishedTag='v1.1.2',publishedStatus='available';
+ const calls=[],jobs=[],operations=[];let backgroundCheck=false;let candidatePreviewResolve,delayBulk=false,ci=false,publishedTag='v1.1.2',publishedStatus='available';
  const current='a'.repeat(40),latest='b'.repeat(40);
  const versions={version:'1.1.0',current,releases:[{id:'20261030120000-abcdef123456',status:'installed',from:current,at:100}],update:{can_upgrade:false}};
- const api={esc,groups:()=>groups,busy:()=>false,refresh:async()=>{},watchJob:id=>jobs.push(id),
+ const api={esc,groups:()=>groups,busy:()=>false,refresh:async()=>{},watchJob:id=>jobs.push(id),watchOperation:id=>operations.push(id),
   get:async route=>{
    if(route==='versions')return versions;
    if(route.startsWith('latest_release'))return {published_release:{status:publishedStatus,tag:publishedTag,checked_at:100}};
@@ -37,8 +37,9 @@ async function run(){
     return result;
    }
    if(route==='bulk_apply')return {job:'20261030120000-123456abcdef'};
-   if(route==='check_update')return {current,latest,can_upgrade:ci,message:ci?'Ready':'CI pending'};
-   if(route==='upgrade'||route==='restore_release')return {id:'20261030120000-abcdef123456'};
+   if(route==='check_update'&&backgroundCheck)return {ok:true,operation_id:'20261030120000-fedcba123456'};
+   if(route==='check_update')return {current,latest,tag:'v1.3.0',fingerprint:'c'.repeat(64),can_upgrade:ci,message:ci?'Ready':'CI pending'};
+   if(route==='upgrade'||route==='restore_release')return {operation_id:'20261030120000-abcdef123456'};
    if(route==='ack')return {ok:true};
    throw Error('Unexpected POST '+route);
   }};
@@ -78,10 +79,15 @@ async function run(){
  publishedStatus='available';publishedTag='v1.1.0';ci=true;await d.getElementById('pf-update-check').onclick();assert.match(d.getElementById('pf-latest-info').textContent,/与当前安装版本相同/);assert.equal(d.getElementById('pf-upgrade').disabled,false);
  d.getElementById('pf-upgrade').onclick();await settle();
  assert.equal(calls.at(-1).route,'upgrade');assert.equal(calls.at(-1).payload.target,latest);
- assert.equal(calls.at(-1).payload.confirm,'UPGRADE');
+ assert.equal(calls.at(-1).payload.confirm,'UPGRADE');assert.equal(calls.at(-1).payload.fingerprint,'c'.repeat(64));
  await d.getElementById('pf-version-refresh').onclick();
  d.getElementById('pf-restore').onclick();await settle();
  assert.equal(calls.at(-1).route,'restore_release');assert.equal(calls.at(-1).payload.confirm,'RESTORE_CODE');
+ assert(operations.includes('20261030120000-abcdef123456'),'upgrade and restore must follow durable operations');
+ backgroundCheck=true;await d.getElementById('pf-update-check').onclick();assert(operations.includes('20261030120000-fedcba123456'));assert.match(d.getElementById('pf-update-message').textContent,/后台核对/);assert(d.getElementById('pf-upgrade').disabled);
+ versions.releases.unshift({id:'20261031120000-123456abcdef',status:'installing',recoverable:true,from:current,at:200});
+ versions.update={can_upgrade:false,message:'上次程序升级未完成，请先恢复'};d.dispatchEvent(new w.Event('phone-panel-operation-complete'));await settle();
+ assert.match(d.getElementById('pf-release').textContent,/未完成升级/);assert.equal(d.getElementById('pf-restore').disabled,false);assert.match(d.getElementById('pf-update-message').textContent,/未完成/);
  dom.window.close();
  console.log('PASS: real DOM filters, escaping, alerts, diagnostics, stale bulk plans and update/restore confirmations');
 }
