@@ -3,7 +3,7 @@ const html=fs.readFileSync('router/luci/view/phone_panel.htm','utf8').replace(/<
 (async()=>{
  const dom=new JSDOM(html,{runScripts:'outside-only',url:'https://router.invalid/'}),w=dom.window,d=w.document,$=id=>d.getElementById(id),calls=[];
  w.eval(fs.readFileSync('router/luci/resources/nodes.js','utf8'));w.confirm=()=>true;
- let done;const api={esc:s=>s.replace(/[&<>"']/g,'_'),busy:()=>false,refresh:async()=>{},get:async()=>({prefix:'手机-',nodes:[{name:'前置-示例'},{name:'手机-01-示例',type:'socks5',server:'192.0.2.11',port:1080,udp:true,editable:true,managed:true,references:['设备示例'],authentication:'已填写（不回显）'}]}),post:async(mode,req)=>{calls.push([mode,req]);if(mode==='node_preview')return await new Promise(r=>done=r);return {message:'saved',backup:'private backup'}}};
+ let done,catalogVersion=0;const api={esc:s=>s.replace(/[&<>"']/g,'_'),busy:()=>false,refresh:async()=>{},get:async()=>({prefix:'手机-',nodes:[{name:'前置-示例'},{name:'手机-01-示例',type:'socks5',server:catalogVersion?'192.0.2.99':'192.0.2.11',port:1080,udp:true,editable:true,managed:true,references:['设备示例'],authentication:'已填写（不回显）'}]}),post:async(mode,req)=>{calls.push([mode,req]);if(mode==='node_preview')return await new Promise(r=>done=r);return {message:'saved',backup:'private backup'}}};
  w.PhonePanelNodes.attach(api);await new Promise(r=>setImmediate(r));
  assert($('node-front').textContent.includes('前置-示例'));assert.equal($('node-password').type,'password');
  $('node-name').value='手机-测试';$('node-server').value='192.0.2.10';$('node-port').value='1080';$('node-password').value='fixture-only';
@@ -17,6 +17,13 @@ const html=fs.readFileSync('router/luci/view/phone_panel.htm','utf8').replace(/<
  assert.equal($('node-server').value,'192.0.2.11');assert($('node-name').readOnly);assert.equal($('node-password').value,'');assert.match($('node-references').textContent,/设备示例/);
  waiting=$('node-form').onsubmit({preventDefault(){}});assert.equal(calls.at(-1)[1].operation,'update');assert.equal(calls.at(-1)[1].original_name,'手机-01-示例');done({revision:'edit-r',summary:{operation:'update'},warning:''});await waiting;
  $('node-operation').value='delete';$('node-operation').dispatchEvent(new w.Event('change'));assert($('node-server').disabled);assert($('node-apply').hidden);
+ assert.equal($('node-rows').querySelectorAll('[data-node-edit]').length,1);assert($('node-rows').querySelector('[data-node-delete]').disabled,'referenced nodes cannot be deleted from the list');
+ $('node-rows').querySelector('[data-node-edit]').click();assert($('node-dialog').open);assert.equal($('node-server').value,'192.0.2.11');
+ $('node-password').value='draft-secret';
+ catalogVersion=1;$('node-list-refresh').onclick();await new Promise(r=>setImmediate(r));assert.equal($('node-password').value,'draft-secret','catalog refresh preserves an open draft');assert.equal($('node-server').value,'192.0.2.11','changed server must not overwrite an open draft');assert($('node-apply').hidden,'catalog changes invalidate preview');
+ waiting=$('node-form').onsubmit({preventDefault(){}});$('node-dialog-close').click();assert(!$('node-dialog').open);assert.equal($('node-password').value,'');done({revision:'late',summary:{name:'fixture'},warning:''});await waiting;assert($('node-apply').hidden,'closing editor invalidates an in-flight preview');
+ $('node-search').value='no-match';$('node-search').dispatchEvent(new w.Event('input'));assert.equal($('node-rows').querySelectorAll('[data-node-edit]').length,0);
+ $('node-create').click();assert($('node-dialog').open);assert.equal($('node-name').value,'');$('node-password').value='discard-me';$('node-dialog').dispatchEvent(new w.Event('cancel',{cancelable:true}));assert(!$('node-dialog').open);assert.equal($('node-password').value,'');
  dom.window.close();
  console.log('PASS: node dropdown, password masking, stale previews, confirmation and credential clearing');
 })().catch(e=>{console.error(e);process.exit(1)});

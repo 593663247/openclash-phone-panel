@@ -33,15 +33,16 @@ function attach(api){
     if(f.search&&![p.hostname,p.ip,p.mac,g.node,g.region].join(' ').toLowerCase().includes(f.search.toLowerCase()))continue;
     const t=p.traffic||{},today=t.today||{},month=t.month||{};
     const todayText=t.today_available===false?'尚未累计':bytes((today.up||0)+(today.down||0)),monthText=t.month_available===false?'尚未累计':bytes((month.up||0)+(month.down||0));
-    rows.push('<tr'+(t.alert?' class="pf-attention"':'')+'><td><strong>'+esc(p.hostname||'未命名')+'</strong><small>'+esc(p.mac||'MAC 未记录')+'</small></td><td>'+esc(p.ip)+'</td><td><span class="pf-state pf-'+esc(p.online_state||'unknown')+'" title="'+esc(p.online_evidence||'')+'">'+esc(onlineText[p.online_state]||onlineText.unknown)+'</span><small>'+esc(p.online_evidence||'')+'</small></td><td>'+esc(date(p.last_seen))+'</td><td>'+esc(t.available?bytes(t.rate_up)+' / '+bytes(t.rate_down):'采样未就绪')+'<small>↑ / ↓ 每秒</small></td><td>'+esc(todayText)+'<small>↑ '+esc(bytes(today.up))+' · ↓ '+esc(bytes(today.down))+'</small></td><td>'+esc(monthText)+(t.alert?'<small class="pf-danger">达到流量／速率提醒阈值</small>':'')+'</td><td>'+esc(g.node)+'<small>'+esc(g.region||'未分类')+' · 最近公网出口：'+esc(g.health&&g.health.exit_ip||'未检测')+'</small></td></tr>');
+    const h=g.health||{},last=h.last;
+    rows.push('<tr'+(t.alert?' class="pf-attention"':'')+'><td data-label="设备"><strong>'+esc(p.hostname||'未命名')+'</strong></td><td data-label="固定 IP">'+esc(p.ip)+(p.lease_current_ip&&p.lease_current_ip!==p.ip?'<small class="pf-danger">当前 '+esc(p.lease_current_ip)+' · 等待重连</small>':'')+'</td><td data-label="在线状态"><span class="pf-state pf-'+esc(p.online_state||'unknown')+'" title="'+esc(p.online_evidence||'')+'">'+esc(onlineText[p.online_state]||onlineText.unknown)+'</span></td><td data-label="绑定节点">'+esc(g.node)+'<small>'+esc(g.region||'未分类')+(!ready(g)?' · 入口待检查':'')+'</small></td><td data-label="最近公网出口">'+esc(h.exit_ip||'未检测')+'<small>'+esc(last?date(last.at):'尚无检测时间')+(last&&(!last.dns_ok||!last.exit_ok)?' · 最近检测未通过':'')+'</small></td><td data-label="详细信息"><details><summary>流量与观察</summary><small>MAC：'+esc(p.mac||'未记录')+'<br>最近观察：'+esc(date(p.last_seen))+'<br>在线依据：'+esc(p.online_evidence||'未确认')+'<br>实时 ↑ / ↓：'+esc(t.available?bytes(t.rate_up)+' / '+bytes(t.rate_down):'采样未就绪')+'<br>今日：'+esc(todayText)+' · 本月：'+esc(monthText)+(t.alert?'<br>达到流量或速率提醒阈值':'')+'</small></details></td></tr>');
    }
   }
-  $('pf-device-rows').innerHTML=rows.join('')||'<tr><td colspan="8">没有符合条件的设备。</td></tr>';
+  $('pf-device-rows').innerHTML=rows.join('')||'<tr><td colspan="6">没有符合条件的设备。</td></tr>';
   text('pf-result-count',rows.length+' 台设备');
  }
  function applyFilters(){
   if(!snapshot)return;
-  const f=filters();
+  const f=filters(),extra=[f.region,f.online,f.health].filter(Boolean).length;text('pf-filter-summary','更多筛选'+(extra?'（'+extra+'项）':''));
   document.querySelectorAll('#pp-grid [data-group]').forEach(card=>{const g=snapshot.groups.find(g=>String(g.id)===card.dataset.group);card.hidden=!g||!matchGroup(g,f)});
   table();
  }
@@ -50,8 +51,8 @@ function attach(api){
   document.querySelectorAll('#pp-grid [data-group]').forEach(card=>{
    const g=snapshot.groups.find(g=>String(g.id)===card.dataset.group);if(!g)return;
    const old=card.querySelector('.pf-health');if(old)old.remove();
-   const h=g.health||{},last=h.last,block=document.createElement('div');block.className='pf-health';
-   block.innerHTML='<div class="pf-health-top"><span>'+esc(g.region||'未分类')+' · '+esc(h.checks?String(h.success_percent)+'% 最近检测通过':'等待首次检测')+'</span><button type="button" data-diagnose="'+esc(g.id)+'">诊断与记录</button></div>'+
+   const h=g.health||{},last=h.last,block=document.createElement('details');block.className='pf-health';
+   block.innerHTML='<summary>健康记录与诊断</summary><div class="pf-health-top"><span>'+esc(g.region||'未分类')+' · '+esc(h.checks?String(h.success_percent)+'% 最近检测通过':'等待首次检测')+'</span><button type="button" data-diagnose="'+esc(g.id)+'">诊断与记录</button></div>'+
     '<div class="pf-spark" role="img" aria-label="最近链路检测结果">'+(h.history||[]).slice(-24).map(r=>'<span class="'+(r.dns_ok&&r.exit_ok?'pf-good':'pf-bad')+'" title="'+esc(date(r.at)+' · DNS '+r.dns_ms+'ms / 出口 '+r.exit_ms+'ms')+'"></span>').join('')+'</div>'+
     '<small>'+esc(last?date(last.at)+' · '+(categories[last.category]||'检测结果待确认'):'后台监测启动后会分批检测，不自动切换节点。')+'</small>'+
     (h.exit_ip?'<div class="'+(h.exit_changed?'pf-danger':'')+'">出口 '+esc(h.exit_ip)+(h.exit_changed?' · 与确认基线不同':'')+'</div>':'');
@@ -88,7 +89,7 @@ function attach(api){
   text('pf-exit-count',data.groups.filter(g=>g.health&&g.health.exit_changed).length);
   const rates=phones.filter(p=>p.traffic&&p.traffic.available&&Number.isFinite(p.traffic.rate_up)&&Number.isFinite(p.traffic.rate_down));
   text('pf-rate',rates.length?bytes(rates.reduce((n,p)=>n+(p.traffic.rate_up||0),0))+' / '+bytes(rates.reduce((n,p)=>n+(p.traffic.rate_down||0),0)):'采样未就绪');
-  text('pf-sample',data.monitor&&data.monitor.enabled===false?'后台监测已关闭':data.monitor&&data.monitor.fresh?'采样 '+date(data.monitor.sample_at):'监测尚未运行或采样已过期');
+  text('pf-sample',data.monitor&&data.monitor.enabled===false?'已关闭':data.monitor&&data.monitor.fresh?'采样正常':'尚未就绪');text('pf-sample-at',data.monitor&&data.monitor.sample_at?'最近 '+date(data.monitor.sample_at):'等待后台采样');
   text('pf-traffic-note',(data.monitor&&data.monitor.note||'流量从启用监测开始累计，不回填历史数据。')+' 按路由器日期统计，约每 5 分钟保存累计数据。');
   alerts();decorateCards();applyFilters();
  }
@@ -134,10 +135,10 @@ function attach(api){
  function paintVersions(){
   if(!versionData)return;
   const data=versionData,up=data.update||{};
-  text('pf-version',(data.version?'v'+data.version+' · ':'')+(data.current?data.current.slice(0,12):'版本标记未设置'));
+  text('pf-version',data.version?'v'+data.version:'版本未设置');text('pf-version-source','源码标记：'+(data.current?data.current.slice(0,12):'未设置'));
   text('pf-update-message',up.message||'点击检查 GitHub 更新；不会自动安装或改动网络。');
   $('pf-upgrade').disabled=versionBusy||!up.can_upgrade;
-  const pre=up.preflight; $('upgrade-preflight').innerHTML=pre?'<p>升级预检查 · '+esc(date(pre.at))+'</p>'+pre.checks.map(c=>'<span class="console-check '+(c.ok?'':'bad')+'">'+esc((c.ok?'✓ ':'! ')+c.name+' · '+c.detail)+'</span>').join(''):'<p>检查更新时同步执行升级预检查；应用前再次检查。</p>';
+  const pre=up.preflight; $('upgrade-preflight').innerHTML=pre?'<p>升级预检查 · '+esc(date(pre.at))+'</p>'+pre.checks.map(c=>'<span class="console-check '+(c.ok?'':'bad')+'">'+esc((c.ok?'✓ ':'! ')+c.name+' · '+c.detail)+'</span>').join(''):'';
   $('pf-restore').disabled=versionBusy||!(data.releases||[]).some(r=>r.status==='installed'&&/^[a-f0-9]{40}$/.test(r.from||''));
   const selected=$('pf-release').value;
   $('pf-release').innerHTML=(data.releases||[]).filter(r=>r.status==='installed'&&/^[a-f0-9]{40}$/.test(r.from||'')).map(r=>'<option value="'+esc(r.id)+'">'+esc(date(r.at)+' → '+r.from.slice(0,12))+'</option>').join('');

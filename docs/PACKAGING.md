@@ -3,7 +3,7 @@
 Build from a clean tracked checkout:
 
 ```sh
-python3 scripts/build-package.py --version 1.0.3-1 --output /tmp/phone-panel-release
+python3 scripts/build-package.py --version 1.1.0-1 --output /tmp/phone-panel-release
 python3 tests/test-package.py
 ```
 
@@ -13,7 +13,7 @@ Upload the extracted `.ipk` directly to **System → Software → Upload Package
 
 Requires existing OpenClash, LuCI, fw4 and Ruby >=3.1; dependencies are provided by router feeds, not bundled. Not for apk-based firmware or legacy fw3 systems. Installation integrates marked hooks but does not activate networking. Configure the new router's subnet, address and bridge, then use Maintenance to check and initialize. Old manual installations or ambiguous unmarked hooks are rejected. Removal is deliberately blocked until networking has been safely disabled/restored; see maintenance documentation.
 
-Validation for 1.0.3: ZIP extraction/CRC, SHA256, complete payload, maintainer-script shell syntax, isolated backup/restore and the Linux CI regression suite. Windows extraction is checked with the native .NET ZIP reader. No physical router installation or live IP migration was performed for this release; automated checks do not validate live initialization or hardware compatibility.
+Validation for 1.1.0: ZIP extraction/CRC, SHA256, complete payload, maintainer-script shell syntax, isolated backup/restore and the Linux CI regression suite. Windows extraction is checked with the native .NET ZIP reader. No physical router installation or live IP migration was performed for this release; automated checks do not validate live initialization or hardware compatibility.
 
 ## 中文
 

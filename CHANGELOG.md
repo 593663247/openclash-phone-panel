@@ -1,5 +1,16 @@
 # 更新日志 / Changelog
 
+## [1.1.0] — 2026-10-31
+
+- Replace persistent device/node forms with searchable lists and focused native modal editors. Show ten entries initially, with explicit load-more controls.
+- Display configured IP, current lease and recent exit separately. Show device before/after changes and readable previews; hand submitted work back to the shared task center.
+- Add per-node edit/test/reference-checked delete actions, managed/source labels and timestamp-aware diagnostic states. UDP configuration remains distinct from measured UDP results.
+- Preserve open drafts during status/catalog refreshes, invalidate previews when relevant data changes, and clear node credentials when closing an editor. Support Escape, focus return and a single primary action per step.
+- Simplify the home device overview, collapse traffic/technical details and extra filters, retain visible network-protection warnings, and collapse the add-device form until needed.
+- Group initialization, environment maintenance, updates and backups. Collapse raw execution history and program recovery controls.
+- Standardize form labels, spacing, theme-scoped controls, dangerous/disabled actions and 390px mobile layouts without adding another navigation bar.
+- Extend interaction regressions for list actions, pagination, draft preservation and late-preview rejection. Validate desktop/mobile rendering and native dialogs using real Chrome with synthetic local APIs; no physical router or real network mutation was used for this release.
+
 ## [1.0.3] — 2026-10-31
 
 - Remove the duplicate in-page navigation introduced in 1.0.2. Use the native LuCI tabs, keeping Devices & Nodes immediately after Home.

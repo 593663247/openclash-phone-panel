@@ -44,7 +44,7 @@ Create a unique static DHCP lease for that device. Follow [Installation](docs/IN
 
 Deployment baseline previously checked: ImmortalWrt 24.10.2, LuCI Lua compatibility layer, fw4/nftables, Mihomo and sing-box 1.12.8. Requires Ruby 3.1+ with YAML/Psych, Lua/nixio, curl and dnsmasq. The sanitized public staging procedure has not been fresh-installed on every platform.
 
-The reference supports one configurable IPv4 LAN (CIDR /8 through /30, default /24), a configurable proxy prefix (default `手机-`), direct proxy targets and at most 100 node groups. It is not validated for TUN, iptables, multiple VLANs, arbitrary firewall marks, IPv6 source rules or policy-group bindings. Maintenance supports explicit rename, rebind and removal. Removal retains DHCP leases and releases panel protection for that device. Move devices before removing/renaming nodes.
+The reference supports one configurable IPv4 LAN (CIDR /8 through /30, default /24), a configurable proxy prefix (default `手机-`), direct proxy targets and at most 100 node groups. It is not validated for TUN, iptables, multiple VLANs, arbitrary firewall marks, IPv6 source rules or policy-group bindings. Devices & Nodes provides searchable device and node lists with modal editors for rename, rebind, IP changes and removal. Removal retains DHCP leases and releases panel protection for that device. Move devices before removing/renaming nodes.
 
 UDP enabled is configuration state, not a successful UDP transport test. Listener readiness is not a leak audit. Client Private DNS/application DoH bypass port-53 interception. MAC-based forwarding guards can block external IPv6. File snapshots do not guarantee crash-safe or complete runtime rollback. Review the [User Guide](docs/USER_GUIDE.en.md) before deployment.
 
@@ -73,7 +73,7 @@ MIT License. Not affiliated with OpenClash or ImmortalWrt.
 
 ### Landing-node creation
 
-The maintenance page now supports SOCKS5 node creation with credentials, explicit UDP preference, an optional concrete dialer proxy, redacted preview, confirmed loading and rollback. See [node management](docs/NODE_MANAGEMENT.md). This update also fixes device IP migration, DHCP hostname synchronization, node selectors and interval-set merging.
+The Devices & Nodes page supports SOCKS5 creation, editing and reference-checked deletion with credentials, explicit UDP preference, an optional concrete dialer proxy, redacted preview, confirmed loading and rollback. See [node management](docs/NODE_MANAGEMENT.md). This update also fixes device IP migration, DHCP hostname synchronization, node selectors and interval-set merging.
 
 ### Unified operations and node lifecycle
 

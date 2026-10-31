@@ -10,11 +10,11 @@ Backups reside in `/root/phone-panel-transactions/`. The task page offers confir
 
 ## 2. Device selection and three IP meanings
 
-Maintenance → Edit managed device: select a device by name, fixed IPv4 and MAC. The form fills the old IP, name and node. It separately displays **configured fixed IP**, **current DHCP lease matched by MAC**, and **last measured public egress IP**. A different lease is shown as waiting for Wi-Fi reconnection. A detected public IP is historical measurement, not a permanent guarantee.
+Devices & Nodes → Managed devices → Edit device: select a row by name, fixed IPv4 and MAC. The form fills the old IP, name and node. It separately displays **configured fixed IP**, **current DHCP lease matched by MAC**, and **last measured public egress IP**. A different lease is shown as waiting for Wi-Fi reconnection. A detected public IP is historical measurement, not a permanent guarantee.
 
 ## 3. Node management, diagnostics and independent storage
 
-Maintenance supports SOCKS5 create/update/delete. Editing retains old credentials when the password is blank and preserves advanced fields not exposed by the form. Clearing authentication requires an explicit checkbox. Renaming a node is intentionally unsupported. Deletion is refused when source rules, groups, listeners, dialer proxies or managed devices reference it.
+The landing-node list under Devices & Nodes supports SOCKS5 create/update/delete through row actions and modal editors. Editing retains old credentials when the password is blank and preserves advanced fields not exposed by the form. Clearing authentication requires an explicit checkbox. Renaming a node is intentionally unsupported. Deletion is refused when source rules, groups, listeners, dialer proxies or managed devices reference it.
 
 Nodes created/edited through this page are stored privately in `/etc/phone-dns/managed-nodes.yaml` and merged during OpenClash generation. Existing source-only nodes are **not silently imported**. On a new configuration, missing managed nodes are added; same-name/different-parameter conflicts fail instead of overwriting either side. This preserves panel-managed nodes across source replacement, not arbitrary manual source edits. Back up this registry; never upload it to public GitHub.
 

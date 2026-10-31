@@ -1,13 +1,45 @@
-(function(root){'use strict';function attach(api){
- const $=id=>document.getElementById(id);let current=[],busy=false,refreshing=false,signature='',focused=root.sessionStorage.getItem('phone-panel-current-operation');const completed=new Set();
+(function(root){'use strict';
+root.PhonePanelDialogFocus=function(dialog){dialog.addEventListener('keydown',event=>{
+ if(event.key!=='Tab')return;
+ const items=Array.from(dialog.querySelectorAll('button,input,select,textarea,a[href],summary,[tabindex]')).filter(el=>!el.disabled&&el.tabIndex>=0&&el.getClientRects().length);
+ if(!items.length){event.preventDefault();return}
+ const first=items[0],last=items[items.length-1],active=document.activeElement;
+ if(event.shiftKey&&(active===first||!items.includes(active))){event.preventDefault();last.focus()}
+ else if(!event.shiftKey&&(active===last||!items.includes(active))){event.preventDefault();first.focus()}
+})};
+function attach(api){
+ const $=id=>document.getElementById(id);let current=[],groups=[],busy=false,refreshing=false,signature='',focused=root.sessionStorage.getItem('phone-panel-current-operation');const completed=new Set();
  function update(status){
-  current=status.groups.flatMap(g=>(g.phones||[]).map(p=>({...p,node:g.node,group:g.id,exit_ip:g.health&&g.health.exit_ip})));
+  groups=status.groups;current=status.groups.flatMap(g=>(g.phones||[]).map(p=>({...p,node:g.node,group:g.id,exit_ip:g.health&&g.health.exit_ip})));
   const select=$('edit-device'),old=select.value,key=JSON.stringify(current.map(p=>[p.ip,p.hostname,p.mac,p.lease_current_ip,p.node]));
-  if(key!==signature){select.innerHTML='<option value="">请选择要编辑的设备</option>'+current.map(p=>'<option value="'+api.esc(p.ip)+'">'+api.esc((p.hostname||'未命名')+' · '+p.ip+' · '+(p.mac||'MAC 未知'))+'</option>').join('');select.value=current.some(p=>p.ip===old)?old:'';signature=key}
-  detail();
+  if(key!==signature){select.innerHTML='<option value="">请选择要编辑的设备</option>'+current.map(p=>'<option value="'+api.esc(p.ip)+'">'+api.esc((p.hostname||'未命名')+' · '+p.ip+' · '+(p.mac||'MAC 未知'))+'</option>').join('');select.value=current.some(p=>p.ip===old)?old:'';signature=key;if(old&&$('device-dialog').hasAttribute('open')){$('edit-ip').dispatchEvent(new root.Event('input'));$('edit-apply').hidden=true;$('edit-result').hidden=false;$('edit-result').textContent='设备状态已变化，请重新预览；当前输入已保留。'}}
+  detail();devices();change();
  }
  function detail(){const p=current.find(p=>p.ip===$('edit-device').value);$('edit-device-info').textContent=p?'固定配置：'+p.ip+'｜当前租约：'+(p.lease_current_ip||'未发现')+'｜'+(p.lease_current_ip&&p.lease_current_ip!==p.ip?'等待重连 Wi-Fi':'租约已一致／待确认')+'｜节点：'+p.node+'｜最近检测公网出口：'+(p.exit_ip||'未检测'): '请选择设备，固定 IP、当前租约和公网出口会分别显示。'}
  $('edit-device').onchange=()=>{const p=current.find(p=>p.ip===$('edit-device').value);$('edit-ip').value=p?p.ip:'';if(p){$('edit-name').value=p.hostname||'';$('edit-group').value=String(p.group)}$('edit-ip').dispatchEvent(new root.Event('input'));detail()};
+ let deviceOpener=null,deviceSignature='',deviceLimit=10;
+ function devices(){
+  const search=$('managed-device-search').value.trim().toLowerCase(),rows=current.filter(p=>[p.hostname,p.ip,p.mac,p.node].join(' ').toLowerCase().includes(search));
+  $('managed-device-count').textContent=Math.min(rows.length,deviceLimit)+' / '+rows.length+' 台';$('managed-device-more').hidden=rows.length<=deviceLimit;
+  const signature=JSON.stringify([deviceLimit,rows.map(p=>[p.ip,p.hostname,p.mac,p.node,p.exit_ip,p.lease_current_ip])]);if(signature===deviceSignature)return;deviceSignature=signature;
+  $('managed-device-rows').innerHTML=rows.slice(0,deviceLimit).map(p=>'<tr><td data-label="设备"><strong>'+api.esc(p.hostname||'未命名')+'</strong><small>'+api.esc(p.mac||'MAC 未记录')+'</small></td><td data-label="固定 IP / 当前租约">'+api.esc(p.ip)+'<small>'+(p.lease_current_ip&&p.lease_current_ip!==p.ip?'当前 '+api.esc(p.lease_current_ip)+' · 等待重连':p.lease_current_ip?'租约一致':'尚未发现租约')+'</small></td><td data-label="绑定节点">'+api.esc(p.node)+'</td><td data-label="最近公网出口">'+api.esc(p.exit_ip||'未检测')+'<small>最近检测记录，非实时出口</small></td><td data-label="操作"><button type="button" data-device-edit="'+api.esc(p.ip)+'">编辑设备</button></td></tr>').join('')||'<tr><td colspan="5" class="empty-state">'+(current.length?'没有符合条件的设备。':'暂无受管设备，可从主页添加绑定设备。')+'</td></tr>';
+ }
+ function change(){
+  const p=current.find(p=>p.ip===$('edit-device').value);if(!p)return;
+  const op=$('edit-op').value,target=groups.find(g=>String(g.id)===$('edit-group').value);
+  $('edit-change').textContent=op==='rename'?'名称：'+(p.hostname||'未命名')+' → '+($('edit-name').value.trim()||'填写新名称'):op==='change_ip'?'固定 IP：'+p.ip+' → '+($('edit-new-ip').value.trim()||'填写新 IP'):op==='rebind'?'绑定节点：'+p.node+' → '+(target?target.node:'请选择目标节点'):'设备 '+p.ip+'：受保护 → 解除保护（保留 DHCP 租约）';
+ }
+ function closeDevice(){
+  const dialog=$('device-dialog');if(typeof dialog.close==='function')dialog.close();else dialog.removeAttribute('open');
+  $('edit-apply').hidden=true;$('edit-ip').dispatchEvent(new root.Event('input'));
+  if(deviceOpener&&deviceOpener.isConnected)deviceOpener.focus();else $('managed-device-search').focus();
+ }
+ $('managed-device-search').oninput=()=>{deviceLimit=10;devices()};$('managed-device-more').onclick=()=>{deviceLimit+=10;devices()};
+ $('managed-device-rows').onclick=e=>{const button=e.target.closest('[data-device-edit]');if(!button)return;deviceOpener=button;$('edit-device').value=button.dataset.deviceEdit;$('edit-op').value='rename';$('edit-new-ip').value='';$('edit-result').hidden=true;$('edit-device').onchange();$('edit-op').dispatchEvent(new root.Event('change'));const p=current.find(p=>p.ip===button.dataset.deviceEdit);$('device-dialog-title').textContent='编辑 '+(p.hostname||p.ip);change();const dialog=$('device-dialog');if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','')};
+ root.PhonePanelDialogFocus($('device-dialog'));
+ $('device-dialog-close').onclick=closeDevice;
+ $('device-dialog').addEventListener('cancel',()=>{$('edit-apply').hidden=true;$('edit-ip').dispatchEvent(new root.Event('input'))});
+ ['edit-name','edit-new-ip','edit-group','edit-op'].forEach(id=>{['input','change'].forEach(event=>$(id).addEventListener(event,change))});
  const names={node_test:'节点检测',device_edit:'设备修改',node_change:'节点变更',device_add:'添加设备',device_batch:'批量添加',initialize:'初始化',upgrade:'程序升级',backup:'创建备份',doctor:'环境检查',dependencies:'安装依赖',repair_hooks:'修复钩子',restore:'配置恢复',restore_release:'程序恢复'};
  const states={queued:'等待执行',running:'执行中',done:'已完成',failed:'失败',interrupted:'执行中断'};
  let records=[],limit=5;const expanded=new Set(),folded=new Set(),announced=new Set();
@@ -42,7 +74,7 @@
    attention.forEach(o=>announced.add(attentionKey(o)));
    // Capture open state before replacing DOM; polling never folds a user's details.
    $('operation-list').querySelectorAll('[data-task-id]').forEach(el=>{if(el.open)expanded.add(el.dataset.taskId);else folded.add(el.dataset.taskId)});paint();
-   for(const o of d.operations){if(['done','failed','interrupted'].includes(o.status)&&!completed.has(o.id)){completed.add(o.id);if(o.id===root.sessionStorage.getItem('phone-panel-current-operation')){root.sessionStorage.removeItem('phone-panel-current-operation');await api.refresh();document.dispatchEvent(new root.Event('phone-panel-operation-complete'))}}}
+   for(const o of d.operations){if(['done','failed','interrupted'].includes(o.status)&&!completed.has(o.id)){completed.add(o.id);if(o.id===root.sessionStorage.getItem('phone-panel-current-operation')){root.sessionStorage.removeItem('phone-panel-current-operation');const target=o.action==='device_edit'?'device-manager-note':['node_change','node_test'].includes(o.action)?'node-list-note':null;if(target)$(target).textContent=o.status==='done'?(o.action==='node_test'?outcomes(o):'配置验收通过。请核对设备租约，并按需检测实际出口与 UDP。'):'操作未完成，请展开任务与恢复查看失败和恢复结果。';await api.refresh();document.dispatchEvent(new root.Event('phone-panel-operation-complete'))}}}
   }catch(e){$('operation-note').textContent='暂时读不到任务：'+e.message+'。任务在后台继续，刷新后可恢复查询。'}finally{refreshing=false}
  }
  function watch(id){busy=true;focused=id;$('operation-panel').open=true;root.sessionStorage.setItem('phone-panel-current-operation',id);$('operation-note').textContent='后台任务 '+id+' 已提交，可刷新页面；任务完成前请勿重复操作。';poll()}

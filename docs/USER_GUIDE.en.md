@@ -42,7 +42,7 @@ A matching existing source rule can be adopted to complete a pending import afte
 
 Edit the existing `/32` rule target in the active source configuration, save and apply. DNS follows the business egress target, not the other way around.
 
-Old devices are not automatically deleted. The maintenance page offers explicit rename, rebind and removal previews. Removal releases panel protection while retaining the DHCP lease. Migrate devices and inspect mapping/leases/listeners/firewall sets before deleting a source rule or renaming/removing its node. Ambiguous/missing managed rules cause alignment to fail rather than guess.
+Old devices are not automatically deleted. The Devices & Nodes list opens a focused modal editor for rename, IP changes, rebind and removal previews. Removal releases panel protection while retaining the DHCP lease. Migrate devices and inspect mapping/leases/listeners/firewall sets before deleting a source rule or renaming/removing its node. Ambiguous/missing managed rules cause alignment to fail rather than guess.
 
 Single-device IPv4 /32 rules are supported within one configurable LAN (CIDR parameters /8 through /30, default /24). Wider subnet integration still needs router testing. Policy-group targets, arbitrary CIDRs, IPv6 source addresses and multiple LANs require adaptation. No proxy subscriptions or provider accounts are included.
 
@@ -82,3 +82,7 @@ Navigation is Home → Devices & Nodes → Maintenance → Settings. Devices & N
 ## 9. Observability and batch/version management
 
 See [feature guide](FEATURES.zh-CN.md) for presence evidence, exit changes, filtering, health/traffic history, DHCP batch addition, diagnostics and program recovery. Accounting begins when enabled. Neither egress switching nor software upgrades run automatically.
+
+## 10. Lists and editors (1.1.0)
+
+Device and landing-node lists are searchable and initially show ten entries. Row actions open modal editors; device changes show before/after values. Catalog/status refreshes preserve open drafts and invalidate relevant previews. Closing a node editor clears entered credentials. Escape closes the editor, and keyboard focus stays inside it while open. The home page emphasizes device state, binding and recent egress; traffic, technical details and extra filters expand on demand. Configuration acceptance is distinct from a renewed phone lease or verified application traffic.
