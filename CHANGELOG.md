@@ -30,3 +30,11 @@
 - Extend UI, backend planning, settings, lease and isolated maintenance regression tests; reconcile bilingual setup/operation documentation.
 
 Validation covers source syntax and isolated behavior. No production router deployment, provider UDP test or complete runtime rollback guarantee is included.
+
+## Unreleased — web node creation and device fixes
+- Add SOCKS5 node creation with redacted previews, explicit UDP choice, concrete dialer selection, source revision checks, private backups, core validation and runtime verification.
+- Preserve explicitly configured UDP settings instead of overwriting them during listener generation.
+- Add device IP migration and DHCP hostname synchronization; invalidate quick-start cache and verify generated runtime bindings.
+- Replace numeric rebind group entry with named node selection and operation-specific fields.
+- Retain private firewall diagnostics; enable interval-set auto-merge to avoid range extension conflicts.
+- Add backend transaction/rollback, credential-redaction and browser DOM regression tests. Real newly provisioned paid-node connectivity/UDP remains unverified.

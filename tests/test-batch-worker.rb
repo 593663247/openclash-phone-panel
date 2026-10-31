@@ -66,6 +66,7 @@ fixture_directory do |root|
    assert(Dir.glob(BASE+'/group-*.conf').empty?,'failed batch left newly generated group files')
   else
    assert(result['status']=='done','successful batch must complete')
+   assert(File.read(router_path('/etc/nftables.d/90-phone-fixed-egress.nft')).include?("flags interval\n auto-merge\n"),'interval sets must auto-merge against retained live elements')
    assert(YAML.load_file(BASE+'/devices.yaml').size==2)
    assert(YAML.load_file(BASE+'/mapping.yaml').flat_map{|g|g['ips']}.sort==rows.map{|r|r['ip']}.sort)
    assert(@commands.count{|a|a==['uci','commit','dhcp']}==1,'batch must commit DHCP once')

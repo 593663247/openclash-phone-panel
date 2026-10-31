@@ -1,8 +1,8 @@
 require_relative 'settings'
 require 'yaml'
 f=ARGV.fetch(0);p=YAML.load_file(f,aliases:true);ls=YAML.load_file('/etc/phone-dns/listeners.yaml',aliases:true)
-# Phone SOCKS5 business nodes support UDP; DNS-only local listeners stay TCP-only.
-(p['proxies']||[]).each{|n|n['udp']=true if n['type']=='socks5' && PhoneSettings.phone?(n['name'])}
+# Default UDP on for phone SOCKS5 nodes; preserve an explicit administrator choice.
+(p['proxies']||[]).each{|n|n['udp']=true if n['type']=='socks5' && PhoneSettings.phone?(n['name']) && !n.key?('udp')}
 names=(p['proxies']||[]).map{|n|n['name']}+(p['proxy-groups']||[]).map{|n|n['name']}
 raise 'DNS binding node missing' unless ls.all?{|l|names.include?(l['proxy'])}
 p['listeners']=(p['listeners']||[]).reject{|l|l['name'].to_s.start_with?('phone-dns-')}+ls

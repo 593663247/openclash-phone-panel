@@ -1,4 +1,5 @@
 require_relative 'settings'
+require_relative 'device-edit'
 require_relative 'panel-store'
 def ip_elements(ips)
  a=ips.map{|ip|ip.split('.').map(&:to_i).inject(0){|n,v|n*256+v}}.uniq.sort
@@ -20,7 +21,15 @@ def atomic(path,data)
  t=path+'.panel-tmp';File.open(t,'wb',0600){|f|f.write(data)};File.rename(t,path)
 end
 def run(*args)
- o=IO.popen(args+[{err:[:child,:out]}],&:read);raise "命令执行失败：#{args.first}" unless $?.success?;o
+ o=IO.popen(args+[{err:[:child,:out]}],&:read)
+ status=$?.exitstatus
+ if @command_log
+  File.open(@command_log,File::WRONLY|File::CREAT|File::APPEND,0600){|f|
+   f.puts("[#{Time.now.utc}] #{args.first} exit=#{status}");f.write(o);f.puts
+  }
+ end
+ raise "命令执行失败：#{args.first}（exit=#{status}，详细输出仅保存在路由器私密诊断日志）" unless status==0
+ o
 end
 def quiet(*args)
  IO.popen(args+[{err:File::NULL}],&:read).to_s
@@ -135,7 +144,7 @@ def nft_text(mapping,hs)
  ips=mapping.flat_map{|g|g['ips']}.uniq.sort_by{|ip|ip.split('.').map(&:to_i)}
  macs=ips.flat_map{|ip|h=hs.find{|x|x['ip']==ip};raise "缺少 #{ip} 的静态租约 MAC" unless h;h.fetch('mac','').downcase.split}.uniq
  raise 'MAC 数据异常' unless macs.all?{|m|m.match?(/\A(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\z/)}
- s="set codex_phone4 {\n type ipv4_addr\n flags interval\n elements = { #{ip_elements(ips)} }\n}\n"
+ s="set codex_phone4 {\n type ipv4_addr\n flags interval\n auto-merge\n elements = { #{ip_elements(ips)} }\n}\n"
  s+="set codex_phone_mac {\n type ether_addr\n elements = { #{macs.join(', ')} }\n}\n"
  s+="chain codex_phone_guard {\n type filter hook forward priority -10; policy accept;\n iifname \"#{PhoneSettings['bridge']}\" oifname != \"#{PhoneSettings['bridge']}\" ip saddr @codex_phone4 counter drop comment \"Phone fixed egress: no direct forwarding\"\n iifname \"#{PhoneSettings['bridge']}\" oifname != \"#{PhoneSettings['bridge']}\" ether saddr @codex_phone_mac counter drop comment \"Phone fixed egress: IPv6 and address-change guard\"\n}\n"
  s+="chain codex_phone_dns {\n type nat hook prerouting priority -101; policy accept;\n"
@@ -154,6 +163,7 @@ def apply_worker(id)
   backup=router_path('/root/phone-panel-changes');Dir.mkdir(backup,0700) unless Dir.exist?(backup);backup+='/'+id;Dir.mkdir(backup,0700)
   snaps.each_with_index{|(f,s),i|File.write(backup+"/file-#{i}",s) if s}
   File.write(backup+'/manifest.yaml',snaps.keys.to_yaml)
+  @command_log=backup+'/commands.log'
   jobwrite(id,{'status'=>'running','message'=>'正在更新并检查配置','backup'=>backup})
   cfg=source_path;a=YAML.load_file(cfg,aliases:true);mapping=catalog
   devices=File.exist?(BASE+'/devices.yaml') ? (YAML.load_file(BASE+'/devices.yaml') || []) : []
@@ -167,7 +177,7 @@ def apply_worker(id)
     sec=PhoneSettings.lease_section('phone_panel',p['ip'])
     raise 'DHCP 配置段名称冲突' unless quiet('uci','-q','get','dhcp.'+sec).empty?
     run('uci','set',"dhcp.#{sec}=host")
-    {'mac'=>p['mac'],'ip'=>p['ip'],'name'=>'phone-'+p['ip'].tr('.','-')}.each{|k,v|run('uci','set',"dhcp.#{sec}.#{k}=#{v}")}
+    {'mac'=>p['mac'],'ip'=>p['ip'],'name'=>(DeviceEdit.dhcp_hostname(p['name']) || 'phone-'+p['ip'].tr('.','-'))}.each{|k,v|run('uci','set',"dhcp.#{sec}.#{k}=#{v}")}
     changed_dhcp=true
    end
    devices<<p.select{|k,v|%w[name ip mac group].include?(k)}
@@ -178,6 +188,7 @@ def apply_worker(id)
   run('/etc/openclash/clash','-t','-d','/etc/openclash','-f',cfg)
   run('/usr/bin/ruby',BASE+'/render-dns.rb')
   run('/usr/bin/sing-box','check','-c',BASE+'/config.json')
+  atomic(backup+'/candidate-firewall.nft',File.binread(router_path('/etc/nftables.d/90-phone-fixed-egress.nft')))
   run('fw4','check')
   jobwrite(id,{'status'=>'running','message'=>'检查通过，正在应用网络配置','backup'=>backup})
   run('/etc/init.d/firewall','reload')
@@ -201,7 +212,7 @@ def apply_worker(id)
   jobwrite(id,{'status'=>'done','message'=>"#{plans.size} 台设备已添加，绑定、DNS 与防直连已同步。请重新连接 Wi-Fi 并检测对应分组。",'devices'=>plans.map{|p|p.select{|k,v|%w[name ip mac group node].include?(k)}},'backup'=>backup})
 
 rescue =>e
- recovered=false
+ recovered=false;rollback_error=nil
  if backup && !snaps.empty?
   begin
    snaps.each{|f,s|s ? atomic(f,s) : (File.delete(f) if File.exist?(f))}
@@ -209,10 +220,13 @@ rescue =>e
    quiet('uci','revert','dhcp');run('fw4','check');run('/etc/init.d/firewall','reload');run('/etc/init.d/openclash','stop')
    File.delete(router_path('/tmp/openclash.change')) if File.exist?(router_path('/tmp/openclash.change'))
    run('/etc/init.d/openclash','start');run('/etc/init.d/phone-dns','restart');run('/etc/init.d/dnsmasq','reload');recovered=true
-  rescue;end
+  rescue => rollback_exception
+   rollback_error=rollback_exception.message
+  end
  end
- jobwrite(id,{'status'=>'failed','message'=>e.message,'rolled_back'=>recovered,'backup'=>backup})
+ jobwrite(id,{'status'=>'failed','message'=>e.message,'rolled_back'=>recovered,'backup'=>backup,'diagnostic_log'=>@command_log,'rollback_error'=>rollback_error})
 ensure
+ @command_log=nil
  lock.close if lock
 end
 if __FILE__==$PROGRAM_NAME

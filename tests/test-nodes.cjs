@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),{JSDOM}=require('jsdom');
+const html=fs.readFileSync('router/luci/view/phone_panel.htm','utf8').replace(/<%[\s\S]*?%>/g,'');
+(async()=>{
+ const dom=new JSDOM(html,{runScripts:'outside-only',url:'https://router.invalid/'}),w=dom.window,d=w.document,$=id=>d.getElementById(id),calls=[];
+ w.eval(fs.readFileSync('router/luci/resources/nodes.js','utf8'));w.confirm=()=>true;
+ let done;const api={esc:s=>s.replace(/[&<>"']/g,'_'),busy:()=>false,refresh:async()=>{},get:async()=>({prefix:'手机-',nodes:[{name:'前置-示例'}]}),post:async(mode,req)=>{calls.push([mode,req]);if(mode==='node_preview')return await new Promise(r=>done=r);return {message:'saved',backup:'private backup'}}};
+ w.PhonePanelNodes.attach(api);await new Promise(r=>setImmediate(r));
+ assert($('node-front').textContent.includes('前置-示例'));assert.equal($('node-password').type,'password');
+ $('node-name').value='手机-测试';$('node-server').value='192.0.2.10';$('node-port').value='1080';$('node-password').value='fixture-only';
+ let waiting=$('node-form').onsubmit({preventDefault(){}});$('node-name').dispatchEvent(new w.Event('input'));done({revision:'r',summary:{name:'手机-测试'},warning:''});await waiting;
+ assert($('node-apply').hidden,'stale preview must be discarded');
+ waiting=$('node-form').onsubmit({preventDefault(){}});done({revision:'r',summary:{name:'手机-测试'},warning:'reload'});await waiting;
+ assert(!$('node-apply').hidden);assert(!$('node-result').textContent.includes('fixture-only'),'password must not be displayed');
+ await $('node-apply').onclick();assert.equal(calls.at(-1)[0],'node_apply');assert.equal(calls.at(-1)[1].revision,'r');assert.equal($('node-password').value,'');assert($('node-apply').hidden);
+ console.log('PASS: node dropdown, password masking, stale previews, confirmation and credential clearing');
+})().catch(e=>{console.error(e);process.exit(1)});

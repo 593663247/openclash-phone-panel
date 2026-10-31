@@ -151,12 +151,33 @@ async function check() {
   assert.equal(edit.element('edit-apply').hidden,true,'editing fields invalidates in-flight edit preview');
   await edit.element('edit-apply').onclick();
   assert.equal(edit.requests.length,1,'stale edit must not apply');
+  edit.element('edit-op').value='change_ip';
+  edit.element('edit-new-ip').value='192.168.1.120';
   const validEdit=edit.element('edit-preview').onclick();
   edit.requests[1].resolve({ revision:'current',summary:{operation:'rename'},warning:'Review' });
   await validEdit;
   assert.equal(edit.element('edit-apply').hidden,false,'valid edit can confirm');
+  edit.element('edit-new-ip').oninput();
+  assert.equal(edit.element('edit-apply').hidden,true,'changing the target IP invalidates confirmation');
   edit.api.syncGroups([group]);
   assert.equal(edit.element('edit-apply').hidden,true,'catalog changes invalidate device edit preview');
+  const selector=setup();
+  selector.api.syncGroups([{...group,id:1,node:'手机-01-纽约'},{...group,id:2,node:'手机-02-纽约'}]);
+  selector.element('edit-op').value='rebind';selector.element('edit-op').onchange();
+  assert.equal(selector.element('edit-group').hidden,false,'rebind shows node selector');
+  assert.equal(selector.element('edit-new-ip').hidden,true,'rebind hides IP field');
+  assert.match(selector.element('edit-group').innerHTML,/手机-02-纽约/);
+  await selector.element('edit-preview').onclick();
+  assert.equal(selector.requests.length,0,'empty node choice is rejected before POST');
+  selector.element('edit-ip').value='192.168.1.101';selector.element('edit-group').value='2';
+  const choose=selector.element('edit-preview').onclick();
+  const payload=JSON.parse(selector.requests[0].options.body.get('payload'));
+  assert.equal(payload.group,'2','node label submits underlying group ID');
+  selector.requests[0].resolve({revision:'valid',summary:payload,warning:''});await choose;
+  selector.element('edit-op').value='change_ip';selector.element('edit-op').onchange();
+  assert.equal(selector.element('edit-group').hidden,true);
+  assert.equal(selector.element('edit-new-ip').hidden,false);
+  assert.equal(selector.element('edit-apply').hidden,true,'switching operation invalidates preview');
   console.log('PASS: add/edit previews, catalog refresh, stale probes, job recovery and request timeout');
 }
 

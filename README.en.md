@@ -68,3 +68,7 @@ CI validates syntax, planning, asynchronous UI state, isolated filesystem backup
 No real proxy configuration, credentials, leases, device inventory, logs, screenshots or backups are included. All example network/device values are synthetic. Never submit unsanitized runtime YAML or logs. See [SECURITY.md](SECURITY.md).
 
 MIT License. Not affiliated with OpenClash or ImmortalWrt.
+
+### Landing-node creation
+
+The maintenance page now supports SOCKS5 node creation with credentials, explicit UDP preference, an optional concrete dialer proxy, redacted preview, confirmed loading and rollback. See [node management](docs/NODE_MANAGEMENT.md). This update also fixes device IP migration, DHCP hostname synchronization, node selectors and interval-set merging.

@@ -2,6 +2,7 @@
 set codex_phone4 {
  type ipv4_addr
  flags interval
+ auto-merge
 }
 set codex_phone_mac {
  type ether_addr

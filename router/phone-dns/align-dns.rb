@@ -45,7 +45,7 @@ nft=nft.sub(/chain codex_phone_dns \{.*?^\}/m,"chain codex_phone_dns {\n type na
 hs=PhoneImport.hosts
 macs=ips.flat_map{|ip|h=hs.find{|x|x['ip']==ip};raise "缺少静态租约 #{ip}" unless h;h.fetch('mac','').downcase.split}.uniq
 raise 'MAC 数据异常' unless macs.all?{|m|m.match?(/\A(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\z/)}
-nft=nft.sub(/set codex_phone4 \{.*?^\}/m,"set codex_phone4 {\n type ipv4_addr\n flags interval\n elements = { #{ip_elements(ips)} }\n}")
+nft=nft.sub(/set codex_phone4 \{.*?^\}/m,"set codex_phone4 {\n type ipv4_addr\n flags interval\n auto-merge\n elements = { #{ip_elements(ips)} }\n}")
 nft=nft.sub(/set codex_phone_mac \{.*?^\}/m,"set codex_phone_mac {\n type ether_addr\n elements = { #{macs.join(', ')} }\n}")
 File.write(path,nft)
 if ARGV[1]=='live'

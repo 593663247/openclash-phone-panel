@@ -18,6 +18,10 @@ function index()
  entry({'admin','services','phone_panel','task_start'},post('panel_task_start')).leaf=true
  entry({'admin','services','phone_panel','device_preview'},post('device_edit_preview')).leaf=true
  entry({'admin','services','phone_panel','device_apply'},post('device_edit_apply')).leaf=true
+ entry({'admin','services','phone_panel','node_catalog'},call('node_catalog')).leaf=true
+ entry({'admin','services','phone_panel','node_assets'},call('node_assets')).leaf=true
+ entry({'admin','services','phone_panel','node_preview'},post('node_preview')).leaf=true
+ entry({'admin','services','phone_panel','node_apply'},post('node_apply')).leaf=true
  p.dependent=true
  p.acl_depends={'luci-app-openclash'}
  entry({'admin','services','phone_panel','status'},call('status')).leaf=true
@@ -63,8 +67,9 @@ local function device_request(mode)
  -- Preserve object/array/null distinctions: Lua's empty table would serialize {} as [].
  require('nixio.fs').chmod(path,'600');fd:write(raw);fd:close()
  local feature_modes={ack=true,check_update=true,upgrade=true,restore_release=true}
- local backend=feature_modes[mode] and 'feature-api.rb' or ((mode=='edit-preview' or mode=='edit-apply') and 'device-operation.rb' or 'device-manager.rb')
- local commandmode=mode=='edit-preview' and 'preview' or mode=='edit-apply' and 'apply' or mode
+ local node_modes={['node-preview']=true,['node-apply']=true}
+ local backend=node_modes[mode] and 'node-manager.rb' or feature_modes[mode] and 'feature-api.rb' or ((mode=='edit-preview' or mode=='edit-apply') and 'device-operation.rb' or 'device-manager.rb')
+ local commandmode=mode=='node-preview' and 'preview' or mode=='node-apply' and 'apply' or mode=='edit-preview' and 'preview' or mode=='edit-apply' and 'apply' or mode
  local output=require('luci.sys').exec('/usr/bin/ruby /etc/phone-dns/'..backend..' '..commandmode..' '..require('luci.util').shellquote(path)..' 2>/dev/null')
  require('nixio.fs').remove(path)
  if not j.parse(output) then h.status(500,'Internal Server Error');h.write('{"error":"设备管理服务未返回有效响应"}');return end
@@ -123,3 +128,14 @@ function feature_ack() device_request('ack') end
 function feature_check_update() device_request('check_update') end
 function feature_upgrade() device_request('upgrade') end
 function feature_restore() device_request('restore_release') end
+
+function node_preview() device_request('node-preview') end
+function node_apply() device_request('node-apply') end
+function node_catalog()
+ local h=require('luci.http');h.header('Cache-Control','no-store');h.prepare_content('application/json')
+ h.write(require('luci.sys').exec('/usr/bin/ruby /etc/phone-dns/node-manager.rb catalog 2>/dev/null'))
+end
+function node_assets()
+ local h=require('luci.http');h.header('Cache-Control','no-store');h.prepare_content('text/javascript; charset=utf-8')
+ h.write(require('nixio.fs').readfile('/usr/share/phone-panel/router/luci/resources/nodes.js') or '')
+end

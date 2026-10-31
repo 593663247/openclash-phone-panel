@@ -86,3 +86,7 @@ CI 检查语法、规划逻辑、界面异步状态、隔离文件备份恢复�
 仓库不包含实际节点配置、密码、密钥、租约、运行日志、截图或备份；示例地址/MAC 为合成数据。不要在 Issue 中附带未经脱敏的 YAML、Cookie 或日志。见 [SECURITY.md](SECURITY.md)。
 
 MIT License。无 OpenClash / ImmortalWrt 官方背书。
+
+### 新增：落地节点网页录入
+
+管理维护页支持新增 SOCKS5 节点：账号密码、UDP、具体前置节点、脱敏预览、确认加载与失败恢复。设备绑定节点下拉框同步更新。参见 [节点管理说明](docs/NODE_MANAGEMENT.md)。同时修复 IP 修改、DHCP 名称同步、改绑节点选择及 interval 集合合并。
