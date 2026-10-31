@@ -132,7 +132,7 @@ function attach(api){
  function paintVersions(){
   if(!versionData)return;
   const data=versionData,up=data.update||{};
-  text('pf-version',data.current?data.current.slice(0,12):'版本标记未设置');
+  text('pf-version',(data.version?'v'+data.version+' · ':'')+(data.current?data.current.slice(0,12):'版本标记未设置'));
   text('pf-update-message',up.message||'点击检查 GitHub 更新；不会自动安装或改动网络。');
   $('pf-upgrade').disabled=versionBusy||!up.can_upgrade;
   $('pf-restore').disabled=versionBusy||!(data.releases||[]).some(r=>r.status==='installed'&&/^[a-f0-9]{40}$/.test(r.from||''));

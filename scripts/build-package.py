@@ -22,7 +22,7 @@ def build(version,output):
  tracked=subprocess.check_output(['git','ls-files','-z'],cwd=ROOT).decode().split('\0')
  sources={}
  for name in tracked:
-  if not name or not (name.startswith(('router/','scripts/','docs/','tests/')) or name in ['README.md','README.en.md','CHANGELOG.md','LICENSE','SECURITY.md','package.json','package-lock.json']):continue
+  if not name or not (name.startswith(('router/','scripts/','docs/','tests/')) or name in ['README.md','README.en.md','CHANGELOG.md','LICENSE','SECURITY.md','package.json','package-lock.json','VERSION']):continue
   p=ROOT/name
   if p.is_symlink() or not p.is_file():raise ValueError('Invalid source: '+name)
   sources[name]=(p.read_bytes(),0o644)
@@ -135,7 +135,7 @@ Commit: {commit}
    info=zipfile.ZipInfo(name,(2026,10,31,0,0,0));info.compress_type=zipfile.ZIP_DEFLATED;info.external_attr=0o100644<<16;z.writestr(info,data)
  print(json.dumps({'ipk':str(output/ipkname),'windows_zip':str(output/zipname),'sha256':hashlib.sha256((output/zipname).read_bytes()).hexdigest(),'source_commit':commit},ensure_ascii=False))
 if __name__=='__main__':
- p=argparse.ArgumentParser();p.add_argument('--version',default='2026.10.31-2');p.add_argument('--output',required=True);a=p.parse_args()
+ p=argparse.ArgumentParser();p.add_argument('--version',default=(ROOT/'VERSION').read_text().strip()+'-1');p.add_argument('--output',required=True);a=p.parse_args()
  import re
  if not re.fullmatch(r'[0-9][0-9A-Za-z.+~-]*',a.version):p.error('Invalid package version')
  build(a.version,pathlib.Path(a.output).resolve())

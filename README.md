@@ -1,3 +1,5 @@
+> Release: **v1.0.0** · opkg: **1.0.0-1** · [Changelog](CHANGELOG.md) · [Downloads](https://github.com/593663247/openclash-phone-panel/releases/tag/v1.0.0)
+
 # OpenClash Phone Panel
 
 [English](README.en.md) · [安装 / Installation](docs/INSTALL.md) · [中文使用手册](docs/USER_GUIDE.zh-CN.md) · [English User Guide](docs/USER_GUIDE.en.md)

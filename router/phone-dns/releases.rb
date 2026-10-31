@@ -45,7 +45,10 @@ module PhoneRelease
   if cache['current']!=current || Time.now.to_i-cache.fetch('checked_at',0).to_i>3600
    cache['can_upgrade']=false;cache['message']='版本或检查时间已变化，请重新检查更新'
   end
-  {'current'=>current,'repository'=>REPOSITORY,'update'=>cache,'releases'=>records}
+  version_path=PanelStore.path('/usr/share/phone-panel/VERSION')
+  version=File.file?(version_path) ? File.read(version_path).strip : nil
+  version=nil unless version.to_s.match?(/\A[0-9]+\.[0-9]+\.[0-9]+\z/)
+  {'version'=>version,'current'=>current,'repository'=>REPOSITORY,'update'=>cache,'releases'=>records}
  end
  # A bounded TAR reader: no links, devices, traversal, arbitrary archive roots or unbounded expansion.
  def self.unpack_stream(io,destination)
