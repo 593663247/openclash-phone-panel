@@ -46,7 +46,7 @@ def tracked
  [source_path,router_path('/etc/config/dhcp'),BASE+'/mapping.yaml',BASE+'/devices.yaml',router_path('/etc/nftables.d/90-phone-fixed-egress.nft'),BASE+'/config.json',BASE+'/listeners.yaml']+Dir.glob(BASE+'/group-*.conf')
 end
 def revision_data
- s=PhoneSettings.values.to_yaml+"\0"+(File.exist?(router_path('/etc/config/phone_panel')) ? File.read(router_path('/etc/config/phone_panel')) : '')+"\0"+tracked.map{|p|p+"\0"+(File.exist?(p) ? File.read(p) : '')}.join("\0")
+ s=PhoneBindings.raw+"\0".b+PhoneSettings.values.to_yaml.b+"\0".b+(File.file?(router_path('/etc/config/phone_panel')) ? File.binread(router_path('/etc/config/phone_panel')) : ''.b)+"\0".b+tracked.map{|p|p.b+"\0".b+(File.file?(p) ? File.binread(p) : ''.b)}.join("\0".b)
  s
 end
 
@@ -76,7 +76,7 @@ def valid_input(req)
 end
 def catalog
  mapping=YAML.load_file(BASE+'/mapping.yaml')
- source=YAML.load_file(source_path,aliases:true)
+ source=PhoneBindings.compose(YAML.load_file(source_path,aliases:true))
  names=(source['proxies']||[]).map{|n|n['name']}.select{|name|PhoneSettings.phone?(name)}.uniq
  id=mapping.map{|g|g['id']}.max.to_i
  names.each do |name|
@@ -96,9 +96,9 @@ def plan(req)
  d=valid_input(req)
  raise '存在未保存的 DHCP 配置，请先保存或撤销后重试' unless quiet('uci','changes','dhcp').strip.empty?
  raise '存在未保存的面板设置，请先保存或撤销后重试' unless quiet('uci','changes','phone_panel').strip.empty?
- mapping=catalog;g=mapping.find{|x|x['id']==d['group']};raise 'DNS 分组不存在' unless g
+ mapping=catalog;document=PhoneBindings.require_migrated(mapping);PhoneBindings.assert_mapping(document,mapping);g=mapping.find{|x|x['id']==d['group']};raise 'DNS 分组不存在' unless g
  raise '该 IP 已在面板管理范围内，请勿重复添加' if mapping.any?{|x|x['ips'].include?(d['ip'])}
- source=YAML.load_file(source_path,aliases:true)
+ source=PhoneBindings.compose(YAML.load_file(source_path,aliases:true))
  existing=(source['rules']||[]).select{|r|r.start_with?('SRC-IP-CIDR,') && r.split(',')[1]==d['ip']+'/32'}
  raise '已有来源规则重复或绑定了其他节点' unless existing.empty? || (existing.size==1 && existing.first.split(',')[2]==g['node'])
  raise '所选节点已不存在' unless (source['proxies']||[]).any?{|n|n['name']==g['node']}
@@ -159,7 +159,7 @@ def apply_worker(id)
  job=YAML.load_file(JOBS+'/'+id+'.yaml');req=job.fetch('request');cfg=source_path
  outcome=PhoneApply.transaction(cfg,expected_revision:req['revision'],revision:lambda{revision}) do
   checked=req['batch'] ? batch_plan(req) : plan(req);plans=req['batch'] ? checked['devices'] : [checked]
-  a=YAML.load_file(cfg,aliases:true);mapping=catalog
+  a=PhoneBindings.compose(YAML.load_file(cfg,aliases:true));mapping=catalog
   devices=File.exist?(BASE+'/devices.yaml') ? (YAML.load_file(BASE+'/devices.yaml') || []) : []
   changed=false
   plans.each do |p|
@@ -174,6 +174,7 @@ def apply_worker(id)
    devices<<p.select{|k,v|%w[name ip mac group].include?(k)}
   end
   PhoneApply.command('uci','commit','dhcp') if changed
+  PhoneBindings.write(PhoneBindings.capture(a,mapping,devices,hosts,previous:PhoneBindings.read))
   atomic(cfg,a.to_yaml);atomic(BASE+'/mapping.yaml',mapping.to_yaml);atomic(BASE+'/devices.yaml',devices.to_yaml)
   atomic(router_path('/etc/nftables.d/90-phone-fixed-egress.nft'),nft_text(mapping,hosts))
   {'devices'=>plans.map{|p|p.select{|k,v|%w[name ip mac group node].include?(k)}}}

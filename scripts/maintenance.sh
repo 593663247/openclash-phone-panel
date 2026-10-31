@@ -14,7 +14,7 @@ backup() (
  source_config
  B=/root/phone-panel-maintenance/$(date +%Y%m%d%H%M%S)-$$
  umask 077; mkdir -p "$B"
- for P in usr/share/phone-panel "${CFG#/}" etc/openclash/custom/phone-routing.sh etc/openclash/custom/openclash_custom_overwrite.sh etc/openclash/custom/openclash_custom_firewall_rules.sh etc/phone-dns etc/config/phone_panel etc/config/dhcp etc/nftables.d/90-phone-fixed-egress.nft etc/init.d/phone-dns etc/init.d/phone-panel-monitor usr/lib/lua/luci/controller/phone_panel.lua usr/lib/lua/luci/view/phone_panel.htm usr/lib/lua/luci/model/cbi/phone_panel_settings.lua; do
+ for P in usr/share/phone-panel "${CFG#/}" etc/openclash/custom/phone-routing.sh etc/openclash/custom/openclash_custom_overwrite.sh etc/openclash/custom/openclash_custom_firewall_rules.sh etc/phone-dns etc/config/phone_panel etc/config/openclash etc/config/dhcp etc/nftables.d/90-phone-fixed-egress.nft etc/init.d/phone-dns etc/init.d/phone-panel-monitor etc/init.d/phone-panel-guard usr/lib/lua/luci/controller/phone_panel.lua usr/lib/lua/luci/view/phone_panel.htm usr/lib/lua/luci/model/cbi/phone_panel_settings.lua; do
   if [ -e "/$P" ]; then mkdir -p "$B/$(dirname "$P")"; cp -a "/$P" "$B/$P"; fi
  done
  printf '%s\n' "$CFG" > "$B/source-path"
@@ -44,6 +44,9 @@ case "$ACTION" in
   chmod 755 /etc/init.d/phone-dns
   cp "$ROOT/router/phone-dns/phone-panel-monitor.init" /etc/init.d/phone-panel-monitor
   chmod 755 /etc/init.d/phone-panel-monitor
+  cp "$ROOT/router/phone-dns/phone-panel-guard.init" /etc/init.d/phone-panel-guard
+  chmod 755 /etc/init.d/phone-panel-guard
+  /etc/init.d/phone-panel-guard enable
   cp "$ROOT/router/openclash/phone-routing.sh" /etc/openclash/custom/phone-routing.sh
   chmod 755 /etc/openclash/custom/phone-routing.sh
   cp "$ROOT/router/luci/controller/phone_panel.lua" /usr/lib/lua/luci/controller/

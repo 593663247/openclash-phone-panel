@@ -1,4 +1,5 @@
 require_relative 'settings'
+require_relative 'panel-store'
 require 'yaml'
 def json(x)
  case x
@@ -21,9 +22,12 @@ mapping.each do |g|
   cfg['dns']['servers']<<{'type'=>'https','tag'=>tag,'server'=>n==1 ? PhoneSettings['upstream_primary'] : PhoneSettings['upstream_secondary'],'server_port'=>443,'path'=>'/dns-query','tls'=>{'enabled'=>true,'server_name'=>PhoneSettings['tls_name']},'detour'=>"node-#{id}"}
   cfg['dns']['rules']<<{'inbound'=>[tag],'action'=>'route','server'=>tag}
  end
- File.write("/etc/phone-dns/group-#{id}.conf", "port=#{g['dns_port']}\nlisten-address=127.0.0.1,#{PhoneSettings['router_ip']}\nbind-interfaces\nno-resolv\nno-hosts\ncache-size=512\nstrict-order\nserver=127.0.0.1##{PhoneSettings.port('internal_base')+id*10+1}\nserver=127.0.0.1##{PhoneSettings.port('internal_base')+id*10+2}\nuser=root\n")
+ PanelStore.atomic("/etc/phone-dns/group-#{id}.conf", "port=#{g['dns_port']}\nlisten-address=127.0.0.1,#{PhoneSettings['router_ip']}\nbind-interfaces\nno-resolv\nno-hosts\ncache-size=512\nstrict-order\nserver=127.0.0.1##{PhoneSettings.port('internal_base')+id*10+1}\nserver=127.0.0.1##{PhoneSettings.port('internal_base')+id*10+2}\nuser=root\n")
 end
-raise 'No phone node groups configured' if mapping.empty?
-cfg['dns']['final']="g#{mapping.first['id']}-1"
-File.write('/etc/phone-dns/config.json',json(cfg))
-File.write('/etc/phone-dns/listeners.yaml',listeners.to_yaml)
+if mapping.empty?
+ cfg.delete('dns');cfg['route']={'rules'=>[]}
+else
+ cfg['dns']['final']="g#{mapping.first['id']}-1"
+end
+PanelStore.atomic('/etc/phone-dns/config.json',json(cfg))
+PanelStore.atomic('/etc/phone-dns/listeners.yaml',listeners.to_yaml)

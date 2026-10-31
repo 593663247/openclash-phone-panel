@@ -1,18 +1,15 @@
 require_relative 'panel-store'
 require_relative 'node-registry'
+require_relative 'binding-registry'
 module PhoneApply
  def self.path(p);PanelStore.path(p);end
- def self.source
+ def self.source(allow_missing:false)
   path=PanelStore.run('uci','-q','get','openclash.config.config_path').strip
-  raise '源配置路径无效' unless path.start_with?('/etc/openclash/config/') && path.end_with?('.yaml') && !path.include?('..') && File.realpath(path).start_with?('/etc/openclash/config/')
+  raise '源配置路径无效' unless path.start_with?('/etc/openclash/config/') && path.end_with?('.yaml') && !path.include?('..') && !File.symlink?(path) && (allow_missing ? File.realpath(File.dirname(path))=='/etc/openclash/config' : File.realpath(path).start_with?('/etc/openclash/config/'))
   path
  end
  def self.atomic(file,data)
-  temporary=file+".apply-tmp-#{Process.pid}-#{rand(1<<32)}"
-  File.open(temporary,File::WRONLY|File::CREAT|File::EXCL,0600){|f|f.binmode;f.write(data);f.flush;f.fsync}
-  File.rename(temporary,file)
- ensure
-  File.delete(temporary) if temporary && File.file?(temporary)
+  PanelStore.atomic(file,data)
  end
  def self.phase(label,extra={})
   id=ENV['PHONE_PANEL_OPERATION_ID'];return unless id && id.match?(/\A\d{14}-[a-f0-9]{12}\z/)
@@ -29,6 +26,7 @@ module PhoneApply
   output
  end
  def self.restart
+  PhoneBindings.guard
   phase('停止核心并清除快速启动缓存');command('/etc/init.d/openclash','stop')
   if File.file?(path('/tmp/openclash.change'))
    File.open(@log+'.quickstart','wb',0600){|f|f.write(File.binread(path('/tmp/openclash.change')))};File.delete(path('/tmp/openclash.change'))
@@ -72,7 +70,74 @@ module PhoneApply
    end
   end
   command('fw4','check')
-  {'core'=>true,'bindings'=>true,'dns_listeners'=>true,'guard'=>true,'business'=>'未验证手机实际业务及完整 UDP'}
+  document=PhoneBindings.read
+  if document
+   PhoneBindings.assert_mapping(document,mapping)
+   PhoneBindings.check_hosts(document,PhoneBindings.hosts)
+   document['devices'].each{|d|raise "#{d['ip']} 持久化绑定未加载" unless [source,runtime].all?{|c|c.fetch('rules',[]).include?(PhoneBindings.rule(d))}}
+   guard_state=command('nft','list','chain','inet','phone_panel_persistent','guard')
+   raise '独立持久化防直连保护未通过验收' unless document['devices'].all?{|d|guard_state.include?(d['mac'])&&guard_state.include?(d['ip'])} && (document['devices'].empty? || guard_state.include?('drop'))
+  end
+  checks={'core'=>true,'bindings'=>true,'dns_listeners'=>true,'guard'=>true,'persistent_bindings'=>!document.nil?,'business'=>'未验证手机实际业务及完整 UDP'}
+  checks
+ end
+ def self.config_files(source)
+  ([source,'/etc/openclash/'+File.basename(source),'/etc/config/dhcp','/etc/config/phone_panel','/etc/config/openclash','/etc/nftables.d/90-phone-fixed-egress.nft','/etc/phone-dns/config.json','/etc/phone-dns/managed-nodes.yaml','/etc/phone-dns/managed-bindings.yaml','/etc/phone-dns/persistent-guard.yaml','/etc/phone-dns/mapping.yaml','/etc/phone-dns/devices.yaml','/etc/phone-dns/listeners.yaml','/etc/phone-dns/import-status.yaml']+Dir.glob(self.path('/etc/phone-dns/*.yaml'))+Dir.glob(self.path('/etc/phone-dns/group-*.conf'))).uniq.map{|f|ENV['PHONE_PANEL_TEST_ROOT'] && f.start_with?(ENV['PHONE_PANEL_TEST_ROOT']) ? f : self.path(f)}
+ end
+ def self.snapshot(files)
+  root=self.path('/root/phone-panel-transactions');PanelStore.mkdir(root)
+  dir=root+'/'+Time.now.strftime('%Y%m%d%H%M%S%9N')+'-'+Process.pid.to_s;PanelStore.mkdir(dir)
+  snapshots=files.to_h{|p|[p,File.file?(p) ? File.binread(p) : nil]}
+  manifest=snapshots.to_h{|p,v|[ENV['PHONE_PANEL_TEST_ROOT'] ? p.delete_prefix(ENV['PHONE_PANEL_TEST_ROOT']) : p,v && [v].pack('m0')]}
+  PanelStore.write(dir+'/manifest.json',manifest)
+  [dir,snapshots]
+ end
+ def self.checkpoint(source)
+  files=config_files(source);fingerprint=Digest::SHA256.hexdigest(files.sort.map{|p|p.b+"\0".b+(File.file?(p) ? File.binread(p) : ''.b)}.join("\0".b))
+  old=PanelStore.read(PanelStore.state+'/bindings-last-good.yaml',{})
+  if old['fingerprint']==fingerprint && File.file?(self.path(old.fetch('backup',''))+'/manifest.json')
+   backup=old['backup']
+  else
+   backup,_=snapshot(files)
+   backup=backup.sub(ENV['PHONE_PANEL_TEST_ROOT'].to_s,'') if ENV['PHONE_PANEL_TEST_ROOT']
+   PanelStore.write(PanelStore.state+'/bindings-last-good.yaml',{'backup'=>backup,'fingerprint'=>fingerprint,'source'=>source,'at'=>Time.now.to_i})
+  end
+  PhoneBindings.status('verified',{'message'=>'配置与运行态验收通过；手机租约及实际业务另行验证','backup'=>backup})
+ end
+ def self.allowed_restore?(file)
+  return false unless file.is_a?(String) && !file.include?('..') && !file.include?("\0")
+  return true if %w[/etc/config/dhcp /etc/config/phone_panel /etc/config/openclash /etc/nftables.d/90-phone-fixed-egress.nft /etc/phone-dns/config.json].include?(file)
+  return true if file.match?(%r{\A/etc/phone-dns/[a-z0-9-]+\.(yaml|conf)\z})
+  %w[/etc/openclash/config/ /etc/openclash/].any?{|prefix|file.start_with?(prefix) && File.basename(file)==file.delete_prefix(prefix) && file.end_with?('.yaml')}
+ end
+ def self.restore(backup)
+  raise '恢复路径无效' unless backup.is_a?(String)&&backup.match?(%r{\A/root/phone-panel-transactions/\d{23}-\d+\z})
+  directory=self.path(backup);raise '恢复目录不安全' if File.symlink?(directory)||File.realpath(directory)!=File.expand_path(directory)
+  raise '备份清单体积异常' if File.size(directory+'/manifest.json')>128*1024*1024
+  manifest=PanelStore.read(directory+'/manifest.json',{})
+  raise '备份包含不允许的目标路径' if manifest.empty?||manifest.size>512||!manifest.keys.all?{|p|allowed_restore?(p)}
+  if File.exist?(PhoneBindings.path)
+   raise '旧备份不包含独立绑定库，不能覆盖已迁移设备；请选择迁移后的完整快照' unless manifest['/etc/phone-dns/managed-bindings.yaml']
+  end
+  decoded=manifest.to_h do |file,data|
+   raise '备份内容格式无效' unless data.nil?||data.is_a?(String)
+   [self.path(file),data && data.unpack1('m0')]
+  end
+  raise '备份内容超过恢复容量限制' if decoded.values.compact.sum(&:bytesize)>96*1024*1024
+  begin
+   source=self.source(allow_missing:true)
+  rescue
+   candidates=manifest.keys.select{|p|p.start_with?('/etc/openclash/config/')&&allowed_restore?(p)}
+   raise '当前配置选择无效，备份中也没有唯一源配置可恢复' unless candidates.size==1
+   source=self.path(candidates.first)
+  end
+  transaction(source,extra_files:decoded.keys,resolve_source:lambda{self.source},recovery:true) do
+   decoded.each{|file,data|data ? atomic(file,data) : (File.delete(file) if File.file?(file))}
+   (Dir.glob(self.path('/etc/phone-dns/group-*.conf'))-decoded.keys).each{|file|File.delete(file)}
+   %w[dhcp phone_panel openclash].each{|section|command('uci','revert',section)}
+   PhoneSettings.instance_variable_set(:@values,nil)
+   {'message'=>'完整配置快照已恢复并通过运行态验收；手机租约及实际业务需复测。'}
+  end
  end
  def self.restore_files(snapshots,files)
   errors=[]
@@ -89,27 +154,32 @@ module PhoneApply
   end
   errors
  end
- def self.transaction(path,expected_revision:nil,revision:nil,network:true,postcheck:nil)
+ def self.transaction(path,expected_revision:nil,revision:nil,network:true,postcheck:nil,extra_files:[],resolve_source:nil,recovery:false)
+  original_path=path
   lock=File.open(self.path('/var/lock/phone-panel.lock'),'w',0600)
   raise '另一个配置任务正在运行' unless lock.flock(File::LOCK_EX|File::LOCK_NB)
   phase('检查配置版本与未保存修改')
-  %w[dhcp phone_panel openclash].each{|s|raise "#{s} 有未保存修改" unless PanelStore.run('uci','changes',s).strip.empty?}
+  %w[dhcp phone_panel openclash].each do |section|
+   if recovery
+    text,code=PanelStore.capture('uci','changes',section)
+    raise "#{section} 有未保存修改" if code==0&&!text.strip.empty?
+   else
+    raise "#{section} 有未保存修改" unless PanelStore.run('uci','changes',section).strip.empty?
+   end
+  end
   if revision
    raise '请先预览配置后再确认应用' unless expected_revision.is_a?(String) && !expected_revision.empty?
    raise '配置已变化，请重新预览' unless revision.call==expected_revision
   elsif expected_revision
    raise '缺少配置版本检查'
   end
-  root=self.path('/root/phone-panel-transactions');PanelStore.mkdir(root)
-  dir=root+'/'+Time.now.strftime('%Y%m%d%H%M%S%9N')+'-'+Process.pid.to_s;PanelStore.mkdir(dir);@log=dir+'/commands.log'
-  files=([path,'/etc/openclash/'+File.basename(path),'/etc/config/dhcp','/etc/nftables.d/90-phone-fixed-egress.nft','/etc/phone-dns/config.json','/etc/phone-dns/managed-nodes.yaml']+Dir.glob(self.path('/etc/phone-dns/*.yaml'))+Dir.glob(self.path('/etc/phone-dns/group-*.conf'))).uniq
-  files=files.map{|f|ENV['PHONE_PANEL_TEST_ROOT'] && f.start_with?(ENV['PHONE_PANEL_TEST_ROOT']) ? f : self.path(f)}
-  snapshots=files.to_h{|p|[p,File.file?(p) ? File.binread(p) : nil]}
-  # JSON text avoids binary-tagged YAML snapshots and alias-dependent recovery.
-  PanelStore.write(dir+'/manifest.json',snapshots.transform_values{|v|v && [v].pack('m0')})
+  files=(config_files(path)+extra_files).uniq;dir,snapshots=snapshot(files);@log=dir+'/commands.log'
   phase('备份已完成，更新配置',{'backup'=>dir})
+  guard_touched=false
   begin
    result=yield
+   if PhoneBindings.read;guard_touched=true;PhoneBindings.guard;end
+   path=resolve_source.call if resolve_source
    if network
    phase('验证源配置与生成 DNS/防火墙')
    command('/usr/bin/ruby','/etc/phone-dns/align-dns.rb',path)
@@ -125,14 +195,16 @@ module PhoneApply
     runtime=YAML.safe_load(File.binread(self.path('/etc/openclash/'+File.basename(path))),aliases:true)
     raise '删除节点仍存在于运行配置' if runtime.fetch('proxies',[]).any?{|n|n['name']==result['removed_node']}
    end
+   checkpoint(path) if PhoneBindings.read
    {'ok'=>true,'message'=>'应用及运行配置验收通过；手机换址后请重连 Wi-Fi，实际业务及 UDP 另行检测。','backup'=>dir,'checks'=>checks}.merge(result || {})
   rescue => failure
    phase('应用失败，恢复文件与网络')
    errors=restore_files(snapshots,files)
+   path=original_path
    file_ok=errors.empty?;runtime_ok=false;restore_error=errors.empty? ? nil : '文件恢复未完成：'+errors.join('、')
    if file_ok
     begin
-     command('uci','revert','dhcp');restart;verify(path);runtime_ok=true
+     %w[dhcp phone_panel openclash].each{|section|command('uci','revert',section)};PhoneSettings.instance_variable_set(:@values,nil) if resolve_source;PhoneBindings.guard(PhoneBindings.read || {'schema'=>1,'revision'=>1,'devices'=>[],'owned_rules'=>[]}) if guard_touched;restart;verify(path);checkpoint(path) if PhoneBindings.read;runtime_ok=true
     rescue=>e;restore_error=e.message;end
    end
    {'error'=>failure.message,'files_restored'=>file_ok,'runtime_restored'=>runtime_ok,'rolled_back'=>file_ok&&runtime_ok,'recovery_required'=>!(file_ok&&runtime_ok),'rollback_error'=>restore_error,'backup'=>dir,'diagnostic_log'=>@log}
@@ -150,16 +222,8 @@ if __FILE__==$PROGRAM_NAME
    puts PanelStore.json(result);exit(result['ok'] ? 0 : 1)
   end
   raise 'Unsupported operation' unless mode=='restore'
-  request=YAML.safe_load(File.read(ARGV.fetch(0)),aliases:false);backup=request.fetch('backup')
-  raise '恢复路径无效' unless backup.match?(%r{\A/root/phone-panel-transactions/\d{23}-\d+\z})
-  manifest=PanelStore.read(backup+'/manifest.json',{})
-  source=PhoneApply.source
-  allowed=lambda{|p|p==source || p=='/etc/openclash/'+File.basename(source) || %w[/etc/config/dhcp /etc/nftables.d/90-phone-fixed-egress.nft /etc/phone-dns/config.json].include?(p) || p.match?(%r{\A/etc/phone-dns/[a-z0-9-]+\.(yaml|conf)\z})}
-  raise '备份包含不允许的目标路径' if manifest.empty? || !manifest.keys.all?{|p|allowed.call(p)}
-  result=PhoneApply.transaction(source) do
-   manifest.each{|p,data|data ? PhoneApply.atomic(p,data.unpack1('m0')) : (File.delete(p) if File.file?(p))}
-   {'message'=>'指定备份已恢复并通过运行配置验收；实际业务需复测。'}
-  end
+  request=YAML.safe_load(File.read(ARGV.fetch(0)),aliases:false)
+  result=PhoneApply.restore(request.fetch('backup'))
   puts PanelStore.json(result)
  rescue=>e;puts PanelStore.json({'error'=>e.message});end
 end

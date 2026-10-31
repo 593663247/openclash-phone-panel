@@ -12,6 +12,7 @@ module PanelStore
   return if Dir.exist?(path)
   parent=File.dirname(path);mkdir(parent) unless parent==path
   Dir.mkdir(path,0700)
+  sync_directory(parent)
  end
  def self.read(path,default={})
   return default unless File.file?(path)
@@ -21,13 +22,20 @@ module PanelStore
   default
  end
  def self.write(path,value)
+  atomic(path,json(value))
+ end
+ def self.atomic(path,data)
   mkdir(File.dirname(path))
   temporary=path+".tmp-#{Process.pid}-#{rand(1<<32)}"
-  # JSON is also YAML, and cannot create shared-object YAML aliases in checkpoints.
-  File.open(temporary,'wb',0600){|f|f.write(json(value))}
+  File.open(temporary,File::WRONLY|File::CREAT|File::EXCL,0600){|f|f.binmode;f.write(data);f.flush;f.fsync}
   File.rename(temporary,path)
+  sync_directory(File.dirname(path))
  ensure
   File.delete(temporary) if defined?(temporary) && temporary && File.file?(temporary)
+ end
+ def self.sync_directory(directory)
+  return if RUBY_PLATFORM.match?(/mswin|mingw/)
+  File.open(directory,File::RDONLY){|file|file.fsync}
  end
  def self.capture(*args)
   output=IO.popen(args+[{err:File::NULL}],&:read)

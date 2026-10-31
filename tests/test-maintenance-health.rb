@@ -16,7 +16,7 @@ fixture_directory do |root|
  assert(rows['count']==5,'symlinks must not enter inventory');assert(rows['items'].count{|r|r['recyclable']}==2)
  assert(rows['items'].first(3).all?{|r|r['protection_reason']=='最近三条保护'})
  assert(rows['items'].select{|r|r['recyclable']}.all?{|r|r['protection_reason'].nil?})
- id=rows['items'].last['id'];plan=PhoneMaintenanceHealth.cleanup_plan({'ids'=>[id]})
+ id=rows['items'].last['id'];PanelStore.write(PanelStore.state+'/bindings-last-good.yaml',{'backup'=>id});assert(PhoneMaintenanceHealth.info['items'].find{|r|r['id']==id}['protection_reason']=='恢复引用保护');rejects{PhoneMaintenanceHealth.cleanup_plan({'ids'=>[id]})};File.delete(PanelStore.state+'/bindings-last-good.yaml');plan=PhoneMaintenanceHealth.cleanup_plan({'ids'=>[id]})
  rejects{PhoneMaintenanceHealth.cleanup({'ids'=>[id],'revision'=>'stale'})}
  result=PhoneMaintenanceHealth.cleanup({'ids'=>[id],'revision'=>plan['revision']})
  assert(result['ok']&&!File.exist?(PanelStore.path(id)));assert(File.file?(result['recycle']+'/restore-manifest.json'))

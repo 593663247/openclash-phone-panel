@@ -1,6 +1,6 @@
 require_relative 'panel-store'
 module PhoneOperations
- ACTIONS={'device_edit'=>['device-operation.rb','apply'],'node_change'=>['node-manager.rb','apply'],'node_test'=>['node-manager.rb','test'],'device_add'=>['device-manager.rb','apply'],'device_batch'=>['device-manager.rb','batch-apply'],'restore'=>['apply-engine.rb','restore'],'initialize'=>['apply-engine.rb','initialize']}.freeze
+ ACTIONS={'binding_migrate'=>['binding-manager.rb','apply'],'device_edit'=>['device-operation.rb','apply'],'node_change'=>['node-manager.rb','apply'],'node_test'=>['node-manager.rb','test'],'device_add'=>['device-manager.rb','apply'],'device_batch'=>['device-manager.rb','batch-apply'],'restore'=>['apply-engine.rb','restore'],'initialize'=>['apply-engine.rb','initialize']}.freeze
  ID=/\A\d{14}-[a-f0-9]{12}\z/
  def self.directory;PanelStore.path('/etc/phone-dns/operations');end
  def self.boot;File.read('/proc/sys/kernel/random/boot_id').strip;end

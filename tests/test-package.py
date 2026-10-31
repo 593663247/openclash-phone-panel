@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory(prefix='phone-package-') as temp:
    names={m.name.removeprefix('./') for m in t.getmembers()}
    assert all(not m.issym() and not m.islnk() and '..' not in pathlib.PurePosixPath(m.name).parts and m.uid==m.gid==0 for m in t.getmembers())
    if name=='data.tar.gz':
-    for required in ['etc/phone-dns/luci-cache.rb','etc/phone-dns/node-manager.rb','etc/phone-dns/device-operation.rb','usr/share/phone-panel/router/luci/resources/nodes.js','usr/lib/lua/luci/controller/phone_panel.lua','etc/config/phone_panel']:
+    for required in ['etc/init.d/phone-panel-guard','etc/phone-dns/binding-registry.rb','etc/phone-dns/binding-manager.rb','etc/phone-dns/alignment.rb','etc/phone-dns/luci-cache.rb','etc/phone-dns/node-manager.rb','etc/phone-dns/device-operation.rb','usr/share/phone-panel/router/luci/resources/nodes.js','usr/lib/lua/luci/controller/phone_panel.lua','etc/config/phone_panel']:
      assert required in names,required
     assert not any('/node_modules/' in n or '/.git/' in n for n in names)
    else:

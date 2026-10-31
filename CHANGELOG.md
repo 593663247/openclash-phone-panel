@@ -1,5 +1,16 @@
 # 更新日志 / Changelog
 
+## [1.2.0] — 2026-11-01
+
+- Add a versioned independent device-binding registry, stable MAC identity and exact owned-rule history, preserving rename/rebind/IP changes and explicit deletions across configuration replacements.
+- Add read-only migration previews with source/settings/DHCP/registry revision gates and explicit background application. Conflicting legacy state cannot be silently imported.
+- Reconcile independent nodes and bindings into both the active source and generated runtime before loading, preserving unowned rules and rejecting missing/conflicting nodes, duplicate rules, corrupt registries and DHCP identity/name mismatches.
+- Add an independent nft forwarding guard and early-boot helper, with a separate saved guard fallback. Protection survives replacement of fw4 or a failed OpenClash load; local proxy delivery is not dropped.
+- Flush and atomically replace private configuration/journal files and synchronize directories. Report generation, runtime verification, conflicts and interrupted processes separately; derivation can rerun without replaying user mutations.
+- Save protected complete last-verified snapshots, restore configuration selection/settings/node/device/DHCP state with runtime checks, and retain explicit file/runtime recovery results. Referenced recovery snapshots cannot be recycled.
+- Preserve registry data through program upgrades and reject program recovery to snapshots predating the registry format. Legacy installations must preview and confirm migration under Maintenance.
+- Add pure, workflow, failure-injection, browser and isolated real-nft regression coverage. Physical router reboot/power-loss, subscription integration and network-traffic acceptance remain required deployment checks.
+
 ## [1.1.1] — 2026-10-31
 
 - Display the installed version alongside the actual latest published GitHub Release tag, comparison and check time, with a link to release notes.

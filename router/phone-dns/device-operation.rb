@@ -26,7 +26,7 @@ begin
  raise 'Invalid config path' unless f.start_with?('/etc/openclash/config/') && f.end_with?('.yaml') && !f.include?('..')
  raise 'Save or discard pending panel settings first' unless IO.popen(['uci','changes','phone_panel'],&:read).strip.empty?
  saved_settings=File.exist?('/etc/config/phone_panel') ? File.binread('/etc/config/phone_panel') : ''
- files=[f,base+'/mapping.yaml',base+'/devices.yaml','/etc/config/dhcp'];snap=files.to_h{|p|[p,File.exist?(p) ? File.binread(p) : "--- []\n"]}
+ files=[f,base+'/mapping.yaml',base+'/devices.yaml','/etc/config/dhcp',base+'/managed-bindings.yaml'];snap=files.to_h{|p|[p,File.exist?(p) ? File.binread(p) : "--- []\n"]}
  digest=IO.popen(['sha256sum'],'r+'){|i|i.write(DeviceEdit.revision_data(snap.values,saved_settings));i.close_write;i.read.split.first}
  lease_sections=lambda do
   raise '请先保存或撤销尚未提交的 DHCP 修改' unless IO.popen(['uci','changes','dhcp'],&:read).strip.empty?
@@ -34,7 +34,7 @@ begin
   IO.popen(['uci','show','dhcp'],&:read).each_line do |line|
    next unless line =~ /\Adhcp\.([a-zA-Z0-9_]+|@host\[\d+\])=host\s*$/
    section=$1
-   sections<<{'section'=>section,'ip'=>IO.popen(['uci','-q','get',"dhcp.#{section}.ip"],&:read).strip,'mac'=>IO.popen(['uci','-q','get',"dhcp.#{section}.mac"],&:read).strip}
+   sections<<{'section'=>section,'ip'=>IO.popen(['uci','-q','get',"dhcp.#{section}.ip"],&:read).strip,'mac'=>IO.popen(['uci','-q','get',"dhcp.#{section}.mac"],&:read).strip,'name'=>IO.popen(['uci','-q','get',"dhcp.#{section}.name"],err:File::NULL,&:read).strip}
   end
   sections
  end
@@ -47,7 +47,8 @@ begin
   DeviceEdit.name_lease(req['ip'],lease_sections.call).merge('name'=>DeviceEdit.dhcp_hostname(req['name']))
  end
  migration=migration_check.call;name_update=name_check.call
- result=DeviceEdit.transform(YAML.load_file(f,aliases:true),YAML.load_file(files[1]),YAML.safe_load(snap[files[2]])||[],req)
+ mapping=YAML.load_file(files[1]);document=PhoneBindings.require_migrated(mapping);PhoneBindings.assert_mapping(document,mapping)
+ result=DeviceEdit.transform(PhoneBindings.compose(YAML.load_file(f,aliases:true)),mapping,YAML.safe_load(snap[files[2]])||[],req)
  if mode=='preview'
   puts PanelTasks.json({'ok'=>true,'revision'=>digest,'summary'=>req.merge(migration || {}).merge('dhcp_name'=>name_update && name_update['name']),'warning'=>'确认后在后台应用；名称同步 DHCP，修改 IP 后手机需重连 Wi-Fi。删除会解除防直连保护。'});exit
  end
@@ -76,6 +77,7 @@ begin
   if name_update
    raise '静态租约名称未写入' unless PanelStore.run('uci','-q','get',"dhcp.#{name_update['section']}.name").strip==name_update['name']
   end
+  PhoneBindings.write(PhoneBindings.capture(result['config'],result['mapping'],result['devices'],lease_sections.call,previous:PhoneBindings.read,expected_names:(migration&&name ? {migration['new_ip']=>name} : name_update ? {req['ip']=>name_update['name']} : {})))
   {}
  end
  puts PanelTasks.json(outcome)

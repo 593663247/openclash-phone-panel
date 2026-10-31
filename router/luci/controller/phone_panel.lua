@@ -41,6 +41,9 @@ function index()
  entry({'admin','services','phone_panel','candidates'},call('feature_candidates')).leaf=true
  entry({'admin','services','phone_panel','health'},call('feature_health')).leaf=true
  entry({'admin','services','phone_panel','versions'},call('feature_versions')).leaf=true
+ entry({'admin','services','phone_panel','persistence'},call('feature_persistence')).leaf=true
+ entry({'admin','services','phone_panel','binding_preview'},post('binding_preview')).leaf=true
+ entry({'admin','services','phone_panel','binding_apply'},post('binding_apply')).leaf=true
  entry({'admin','services','phone_panel','latest_release'},call('feature_latest_release')).leaf=true
  entry({'admin','services','phone_panel','bulk_preview'},post('bulk_preview')).leaf=true
  entry({'admin','services','phone_panel','bulk_apply'},post('bulk_apply')).leaf=true
@@ -76,11 +79,11 @@ local function device_request(mode)
  -- Preserve object/array/null distinctions: Lua's empty table would serialize {} as [].
  require('nixio.fs').chmod(path,'600');fd:write(raw);fd:close()
  local feature_modes={ack=true,check_update=true,upgrade=true,restore_release=true}
- local async_modes={['edit-apply']='device_edit',['node-apply']='node_change',['node-test']='node_test',restore='restore',apply='device_add',['batch-apply']='device_batch'}
+ local async_modes={['binding-apply']='binding_migrate',['edit-apply']='device_edit',['node-apply']='node_change',['node-test']='node_test',restore='restore',apply='device_add',['batch-apply']='device_batch'}
  local node_modes={['node-preview']=true,['node-apply']=true}
  local backup_modes={['cleanup-preview']=true,cleanup=true}
- local backend=backup_modes[mode] and 'maintenance-health.rb' or async_modes[mode] and 'operations.rb' or node_modes[mode] and 'node-manager.rb' or feature_modes[mode] and 'feature-api.rb' or ((mode=='edit-preview' or mode=='edit-apply') and 'device-operation.rb' or 'device-manager.rb')
- local commandmode=async_modes[mode] or mode=='node-preview' and 'preview' or mode=='node-apply' and 'apply' or mode=='edit-preview' and 'preview' or mode=='edit-apply' and 'apply' or mode
+ local backend=mode=='binding-preview' and 'binding-manager.rb' or backup_modes[mode] and 'maintenance-health.rb' or async_modes[mode] and 'operations.rb' or node_modes[mode] and 'node-manager.rb' or feature_modes[mode] and 'feature-api.rb' or ((mode=='edit-preview' or mode=='edit-apply') and 'device-operation.rb' or 'device-manager.rb')
+ local commandmode=async_modes[mode] or mode=='binding-preview' and 'preview' or mode=='node-preview' and 'preview' or mode=='node-apply' and 'apply' or mode=='edit-preview' and 'preview' or mode=='edit-apply' and 'apply' or mode
  local output=require('luci.sys').exec('/usr/bin/ruby /etc/phone-dns/'..backend..' '..commandmode..' '..require('luci.util').shellquote(path)..' 2>/dev/null')
  require('nixio.fs').remove(path)
  if not j.parse(output) then h.status(500,'Internal Server Error');h.write('{"error":"设备管理服务未返回有效响应"}');return end
@@ -132,6 +135,9 @@ function feature_asset()
 end
 function feature_candidates() feature_json('candidates') end
 function feature_versions() feature_json('versions') end
+function feature_persistence() feature_json('persistence') end
+function binding_preview() device_request('binding-preview') end
+function binding_apply() device_request('binding-apply') end
 function feature_latest_release() feature_json('latest_release',require('luci.http').formvalue('refresh')=='1' and 'refresh' or nil) end
 function feature_health() feature_json('health',require('luci.http').formvalue('id') or '') end
 function bulk_preview() device_request('batch-preview') end

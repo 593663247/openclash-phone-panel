@@ -1,0 +1,11 @@
+#!/bin/sh /etc/rc.common
+# Independent forward guard: retained if OpenClash cannot load a configuration.
+START=18
+STOP=99
+start() {
+ [ -f /etc/phone-dns/managed-bindings.yaml ] || [ -f /etc/phone-dns/persistent-guard.yaml ] || return 0
+ ruby /etc/phone-dns/binding-registry.rb guard
+}
+reload() { start; }
+# Stopping this boot helper intentionally leaves the installed protection intact.
+stop() { return 0; }

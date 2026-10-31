@@ -8,6 +8,7 @@ def revision
  revision_data.bytes.inject(0){|n,b|(n*31+b)%0xffffffffffffffff}.to_s(16).rjust(40,'0')
 end
 def quiet(*args)
+ return @uci_hosts.values.map{|host|"config host\n"+host.map{|key,value|" option #{key} '#{value}'\n"}.join}.join if args==['uci','export','dhcp']
  if args==['uci','revert','dhcp']
   @uci_hosts=YAML.safe_load(File.read(router_path('/etc/config/dhcp')))||{};return ''
  end
@@ -22,6 +23,7 @@ def run(*args)
   return YAML.load_file(BASE+'/mapping.yaml').flat_map{|g|[g['dns_port'],g['socks_port']]}.map{|p|"tcp 0 0 127.0.0.1:#{p} LISTEN"}.join("\n")
  end
  if args[0,3]==['nft','list','chain']
+  return PhoneBindings.guard_text(PhoneBindings.read) if args.include?('phone_panel_persistent')
   return args.last=='codex_phone_guard' ? 'drop' : YAML.load_file(BASE+'/mapping.yaml').flat_map{|g|g['ips']}.join(' ')
  end
  if (@fail_once==:validation && %w[/usr/bin/sing-box sing-box].include?(args.first)) || (@fail_once==:runtime && args[0,3]==['nft','get','element'])
@@ -32,6 +34,8 @@ def run(*args)
   @uci_hosts[section]||={};@uci_hosts[section][option]=value if option
  elsif args==['uci','commit','dhcp']
   File.write(router_path('/etc/config/dhcp'),@uci_hosts.to_yaml)
+ elsif args==['uci','revert','dhcp']
+  @uci_hosts=YAML.safe_load(File.read(router_path('/etc/config/dhcp')))||{}
  elsif args.first=='/usr/bin/ruby'
   YAML.load_file(BASE+'/mapping.yaml').each{|g|File.write(BASE+"/group-#{g['id']}.conf",'generated')}
  elsif args==['/etc/init.d/openclash','start']
@@ -51,6 +55,7 @@ fixture_directory do |root|
  router=self
  PhoneApply.define_singleton_method(:command){|*args|router.run(*args)}
  PanelStore.define_singleton_method(:run){|*args|router.quiet(*args)}
+ PhoneBindings.define_singleton_method(:guard){|document=PhoneBindings.read|true}
  PhoneSettings.instance_variable_set(:@values,PhoneSettings.validate({}))
  ['/etc/openclash/config','/etc/config','/etc/nftables.d','/var/lock','/tmp','/root', '/etc/phone-dns/jobs'].each{|p|PanelStore.mkdir(router_path(p))}
  nodes=['手机-01-示例','手机-02-示例']
@@ -58,6 +63,7 @@ fixture_directory do |root|
  {'name'=>'Second','ip'=>'192.168.1.102','mac'=>'02:11:22:33:44:66','group'=>2}]
  [false,:validation,:runtime].each_with_index do |failure,index|
   @commands=[];@uci_hosts={};@fail_once=failure
+  File.delete(PhoneBindings.path) if File.file?(PhoneBindings.path)
   File.write(source_path,{'proxies'=>nodes.map{|name|{'name'=>name}},'rules'=>['MATCH,DIRECT']}.to_yaml)
   File.write(router_path('/etc/config/dhcp'),{}.to_yaml)
   File.write(router_path('/tmp/dhcp.leases'),'')
@@ -72,10 +78,12 @@ fixture_directory do |root|
   result=YAML.safe_load(File.read(JOBS+'/'+id+'.yaml'))
   if failure
    assert(result['status']=='failed'&&result['rolled_back'],'failed batch must report rollback')
+   assert(!File.exist?(PhoneBindings.path),'failed first apply must remove its new desired-binding registry')
    original.each{|p,bytes|assert(File.binread(p)==bytes,'failed batch left modified configuration: '+p)}
    assert(Dir.glob(BASE+'/group-*.conf').empty?,'failed batch left newly generated group files')
   else
    assert(result['status']=='done','successful batch must complete')
+   assert(PhoneBindings.read['devices'].size==2,'batch bindings must be independently persisted');assert(revision_data.encoding==Encoding::BINARY,'persisted Unicode bindings must retain safe preview fingerprints')
    assert(File.read(router_path('/etc/nftables.d/90-phone-fixed-egress.nft')).include?("flags interval\n auto-merge\n"),'interval sets must auto-merge against retained live elements')
    assert(YAML.load_file(BASE+'/devices.yaml').size==2)
    assert(YAML.load_file(BASE+'/mapping.yaml').flat_map{|g|g['ips']}.sort==rows.map{|r|r['ip']}.sort)

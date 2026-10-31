@@ -32,6 +32,7 @@ def build(version,output):
  pairs={
  'router/phone-dns/status.rb':('etc/phone-dns/panel-status.rb',0o600),
  'router/phone-dns/phone-dns.init':('etc/init.d/phone-dns',0o755),
+ 'router/phone-dns/phone-panel-guard.init':('etc/init.d/phone-panel-guard',0o755),
  'router/phone-dns/phone-panel-monitor.init':('etc/init.d/phone-panel-monitor',0o755),
  'router/config/phone_panel':('etc/config/phone_panel',0o600),
  'router/luci/controller/phone_panel.lua':('usr/lib/lua/luci/controller/phone_panel.lua',0o644),
@@ -70,6 +71,7 @@ set -eu
 chmod 700 /etc/phone-dns /etc/phone-dns/jobs /etc/phone-dns/panel-requests
 chmod 600 /etc/phone-dns/*.yaml /etc/phone-dns/config.json
 ruby /etc/phone-dns/luci-cache.rb
+/etc/init.d/phone-panel-guard enable
 ruby /usr/share/phone-panel/scripts/hooks.rb install || { echo 'Hook integration failed; original hooks retained. Resolve before initialization.'; exit 1; }
 echo 'Installed without network activation. Open Services > Phone panel > Settings; confirm subnet/bridge, check hooks, then preview and initialize from Maintenance. OpenClash custom hooks must be enabled.'
 '''

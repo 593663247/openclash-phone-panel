@@ -1,6 +1,7 @@
 require_relative 'panel-store'
 require_relative 'maintenance-health'
 require_relative 'luci-cache'
+require_relative 'binding-registry'
 
 module PhoneRelease
  REPOSITORY='593663247/openclash-phone-panel'
@@ -136,7 +137,7 @@ module PhoneRelease
  def self.allowed_destination?(path)
   return false if path.split('/').include?('..')
   path.start_with?('/usr/share/phone-panel/') || path.match?(%r{\A/etc/phone-dns/[a-z0-9-]+\.(?:rb|lua)\z}) ||
-   %w[/etc/init.d/phone-dns /etc/init.d/phone-panel-monitor /usr/lib/lua/luci/controller/phone_panel.lua /usr/lib/lua/luci/view/phone_panel.htm /usr/lib/lua/luci/model/cbi/phone_panel_settings.lua /etc/openclash/custom/phone-routing.sh].include?(path)
+   %w[/etc/init.d/phone-dns /etc/init.d/phone-panel-monitor /etc/init.d/phone-panel-guard /usr/lib/lua/luci/controller/phone_panel.lua /usr/lib/lua/luci/view/phone_panel.htm /usr/lib/lua/luci/model/cbi/phone_panel_settings.lua /etc/openclash/custom/phone-routing.sh].include?(path)
  end
  def self.entries(source)
   pairs=[]
@@ -149,7 +150,7 @@ module PhoneRelease
   end
   Dir.glob(source+'/router/phone-dns/*.{rb,lua}').each{|f|pairs<<[f,'/etc/phone-dns/'+File.basename(f),0600]}
   pairs<<[source+'/router/phone-dns/status.rb','/etc/phone-dns/panel-status.rb',0600]
-  {'router/phone-dns/phone-dns.init'=>'/etc/init.d/phone-dns','router/phone-dns/phone-panel-monitor.init'=>'/etc/init.d/phone-panel-monitor',
+  {'router/phone-dns/phone-dns.init'=>'/etc/init.d/phone-dns','router/phone-dns/phone-panel-monitor.init'=>'/etc/init.d/phone-panel-monitor','router/phone-dns/phone-panel-guard.init'=>'/etc/init.d/phone-panel-guard',
    'router/luci/controller/phone_panel.lua'=>'/usr/lib/lua/luci/controller/phone_panel.lua','router/luci/view/phone_panel.htm'=>'/usr/lib/lua/luci/view/phone_panel.htm',
    'router/luci/model/cbi/phone_panel_settings.lua'=>'/usr/lib/lua/luci/model/cbi/phone_panel_settings.lua','router/openclash/phone-routing.sh'=>'/etc/openclash/custom/phone-routing.sh'}.each do |from,to|
    pairs<<[source+'/'+from,to,to.start_with?('/etc/init.d/','/etc/openclash/custom/') ? 0755 : 0644]
@@ -159,7 +160,7 @@ module PhoneRelease
  end
  def self.atomic_code(path,data,mode)
   PanelStore.mkdir(File.dirname(path));temporary=path+".release-tmp-#{Process.pid}-#{rand(1<<32)}"
-  File.open(temporary,File::WRONLY|File::CREAT|File::EXCL,mode){|f|f.binmode;f.write(data)};File.chmod(mode,temporary);File.rename(temporary,path)
+  File.open(temporary,File::WRONLY|File::CREAT|File::EXCL,mode){|f|f.binmode;f.write(data);f.flush;f.fsync};File.chmod(mode,temporary);File.rename(temporary,path);PanelStore.sync_directory(File.dirname(path))
  ensure
   File.delete(temporary) if defined?(temporary) && temporary && File.file?(temporary)
  end
@@ -169,7 +170,7 @@ module PhoneRelease
   manifest=pairs.map.with_index do |(_,destination,_),index|
    raise 'Unsafe rollback destination' unless allowed_destination?(destination)
    actual=PanelStore.path(destination);present=File.file?(actual)
-   File.open(directory+"/file-#{index}",'wb',0600){|f|f.write(File.binread(actual))} if present
+   PanelStore.atomic(directory+"/file-#{index}",File.binread(actual)) if present
    {'destination'=>destination,'present'=>present,'mode'=>present ? File.stat(actual).mode&0777 : 0600,'file'=>"file-#{index}",
     'sha256'=>present ? file_hash(directory+"/file-#{index}") : nil}
   end
@@ -198,7 +199,7 @@ module PhoneRelease
   config=PanelStore.capture('uci','-q','get','openclash.config.config_path').first.strip
   raise 'Invalid active proxy configuration path' unless config.start_with?('/etc/openclash/config/') && config.end_with?('.yaml') && !config.include?('..')
   [config,'/etc/openclash/'+File.basename(config),'/etc/config/dhcp','/etc/config/phone_panel','/etc/phone-dns/mapping.yaml',
-   '/etc/phone-dns/devices.yaml','/etc/phone-dns/config.json','/etc/phone-dns/listeners.yaml','/etc/nftables.d/90-phone-fixed-egress.nft']+
+   '/etc/phone-dns/devices.yaml','/etc/phone-dns/managed-nodes.yaml','/etc/phone-dns/managed-bindings.yaml','/etc/phone-dns/config.json','/etc/phone-dns/listeners.yaml','/etc/nftables.d/90-phone-fixed-egress.nft']+
    Dir.glob('/etc/phone-dns/group-*.conf')+Dir.glob('/etc/openclash/custom/*').select{|p|File.file?(p)&&p!='/etc/openclash/custom/phone-routing.sh'}
  end
  def self.hashes(paths)
@@ -212,6 +213,7 @@ module PhoneRelease
   elsif !ENV['PHONE_PANEL_TEST_ROOT']
    PanelStore.capture('nft','delete','table','inet','phone_panel_stats')
   end
+  guard=PanelStore.path('/etc/init.d/phone-panel-guard');PanelStore.run(guard,'enable') if File.file?(guard)
   PhoneLuciCache.clear
  end
  def self.stop_monitor_for_restore(id)
@@ -294,6 +296,10 @@ module PhoneRelease
  def self.restore(id)
   raise 'Invalid recovery ID' unless id.to_s.match?(ID)
   record=PanelStore.read(root+'/'+id+'/record.yaml',{})
+  if PhoneBindings.read
+   entries=PanelStore.read(root+'/'+id+'/manifest.yaml',[])
+   raise '此程序快照早于独立绑定格式，不允许降级；请保留当前保护并恢复兼容快照' unless entries.any?{|e|e['destination']=='/etc/phone-dns/binding-registry.rb'&&e['present']}
+  end
   raise 'Recovery record is unavailable' unless record['status']=='installed' && record['from'].to_s.match?(SHA)
   PanelStore.with_lock(PanelStore.path('/var/lock/phone-panel.lock'),true) do
    # Only program files are restored; later DHCP/device edits are preserved.

@@ -40,7 +40,7 @@ function attach(api){
  $('device-dialog-close').onclick=closeDevice;
  $('device-dialog').addEventListener('cancel',()=>{$('edit-apply').hidden=true;$('edit-ip').dispatchEvent(new root.Event('input'))});
  ['edit-name','edit-new-ip','edit-group','edit-op'].forEach(id=>{['input','change'].forEach(event=>$(id).addEventListener(event,change))});
- const names={node_test:'节点检测',device_edit:'设备修改',node_change:'节点变更',device_add:'添加设备',device_batch:'批量添加',initialize:'初始化',upgrade:'程序升级',backup:'创建备份',doctor:'环境检查',dependencies:'安装依赖',repair_hooks:'修复钩子',restore:'配置恢复',restore_release:'程序恢复'};
+ const names={binding_migrate:'设备绑定持久化',node_test:'节点检测',device_edit:'设备修改',node_change:'节点变更',device_add:'添加设备',device_batch:'批量添加',initialize:'初始化',upgrade:'程序升级',backup:'创建备份',doctor:'环境检查',dependencies:'安装依赖',repair_hooks:'修复钩子',restore:'配置恢复',restore_release:'程序恢复'};
  const states={queued:'等待执行',running:'执行中',done:'已完成',failed:'失败',interrupted:'执行中断'};
  let records=[],limit=5;const expanded=new Set(),folded=new Set(),announced=new Set();
  const needsRecovery=o=>o.recovery_required&&!o.historical&&['failed','interrupted'].includes(o.status);
@@ -78,6 +78,22 @@ function attach(api){
   }catch(e){$('operation-note').textContent='暂时读不到任务：'+e.message+'。任务在后台继续，刷新后可恢复查询。'}finally{refreshing=false}
  }
  function watch(id){busy=true;focused=id;$('operation-panel').open=true;root.sessionStorage.setItem('phone-panel-current-operation',id);$('operation-note').textContent='后台任务 '+id+' 已提交，可刷新页面；任务完成前请勿重复操作。';poll()}
+ let bindingPlan=null,recoveryBackup=null,bindingRevision=0;
+ async function persistence(){
+  bindingRevision++;
+  const data=await api.get('persistence'),record=data.status||{},labels={generating:'正在合并',generated:'已生成 · 待验收',verified:'运行态已验收',blocked:'存在冲突',interrupted:'执行中断'};
+  $('binding-state').textContent=data.blocked?'数据需恢复':data.initialized?(labels[record.state]||'独立记录已保存'):'尚未迁移';
+  $('binding-info').textContent=data.message||((data.initialized?'已保存 '+data.count+' 台设备，格式 '+data.schema+'，修订 '+data.revision+'。':'已有设备请先预览迁移。')+' '+(record.message||'')+(record.at?' · '+new Date(record.at*1000).toLocaleString():''));
+  recoveryBackup=data.last_good&&data.last_good.backup||null;$('binding-restore').hidden=!recoveryBackup;
+  bindingPlan=null;$('binding-apply').hidden=true;$('binding-preview').className='primary';
+ }
+ function bindingMessage(value){$('binding-result').hidden=false;$('binding-result').textContent=value}
+ $('binding-refresh').onclick=()=>persistence().catch(e=>bindingMessage(e.message));
+ $('binding-preview').onclick=async()=>{if(busy)return;const sequence=++bindingRevision;bindingPlan=null;$('binding-apply').hidden=true;try{const p=await api.post('binding_preview',{});if(sequence!==bindingRevision)return;bindingPlan={revision:p.revision};bindingMessage((p.already_initialized?'核对现有独立绑定':'首次迁移清单')+' · '+p.count+' 台\n'+p.devices.map(d=>d.name+(d.dhcp_name&&d.dhcp_name!==d.name?'（DHCP 名称：'+d.dhcp_name+'）':'')+' · '+d.mac+' · '+d.ip+' → '+d.node).join('\n')+'\n'+p.warning);$('binding-apply').hidden=false;$('binding-preview').className=''}catch(e){if(sequence===bindingRevision)bindingMessage(e.message)}};
+ $('binding-apply').onclick=async()=>{if(busy||!bindingPlan||!root.confirm('确认保存独立绑定并合并当前配置？会先备份并重载代理，请保留本地管理连接。'))return;const request=bindingPlan;bindingPlan=null;$('binding-apply').hidden=true;try{const r=await api.post('binding_apply',request);watch(r.operation_id);bindingMessage(r.message||'后台任务已提交')}catch(e){bindingMessage(e.message)}};
+ $('binding-restore').onclick=async()=>{if(busy||!recoveryBackup||!root.confirm('将恢复上次通过验收的完整配置，包括配置选择、设置、节点、设备和 DHCP，可能影响全部受管设备。当前配置会先备份。确认恢复？'))return;try{const r=await api.post('operation_restore',{backup:recoveryBackup});watch(r.operation_id)}catch(e){bindingMessage(e.message)}};
+ document.addEventListener('phone-panel-operation-complete',()=>{if($('pp').classList.contains('maintenance-page'))persistence().catch(e=>bindingMessage(e.message))});
+ if($('pp').classList.contains('maintenance-page'))persistence().catch(e=>bindingMessage(e.message));
  let backupPlan=null,backupRows=[],backupLimit=5,backupRevision=0;const backupSelected=new Set();
  function backupMessage(value){$('backup-result').hidden=false;$('backup-result').textContent=value}
  function paintBackups(){

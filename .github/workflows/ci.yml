@@ -15,7 +15,7 @@ jobs:
       - name: Device preview and feature DOM regression tests
         run: npm test
       - name: Install syntax tools
-        run: sudo apt-get update && sudo apt-get install -y ruby lua5.1
+        run: sudo apt-get update && sudo apt-get install -y ruby lua5.1 nftables
       - name: Ruby syntax and pure import planning tests
         run: |
           for file in router/phone-dns/*.rb tests/*.rb; do ruby -c "$file"; done
@@ -27,12 +27,15 @@ jobs:
           sh -n scripts/install-deps.sh
           sh -n router/phone-dns/phone-dns.init
           sh -n router/phone-dns/phone-panel-monitor.init
+          sh -n router/phone-dns/phone-panel-guard.init
           sh -n router/openclash/phone-routing.sh
           ruby -c scripts/hooks.rb
           luac5.1 -p router/luci/controller/phone_panel.lua
           luac5.1 -p router/luci/model/cbi/phone_panel_settings.lua
           luac5.1 -p router/phone-dns/probe-dns.lua
           luac5.1 -p router/phone-dns/probe-udp.lua
+      - name: Independent guard in an isolated network namespace
+        run: sudo env PHONE_PANEL_NFT_TEST=1 unshare --net ruby tests/guard-netns.rb
       - name: Publication privacy gate
         run: python3 scripts/privacy_check.py
       - name: Isolated maintenance backup and restore

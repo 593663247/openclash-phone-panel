@@ -63,6 +63,7 @@ module PhoneNodes
   (cfg['proxies']||[]).each{|n|refs<<"前置引用：#{n['name']}" if n['dialer-proxy']==name}
   (cfg['listeners']||[]).each{|l|refs<<"监听入口：#{l['name']}" if l['proxy']==name}
   mapping.each{|g|refs<<"设备：#{g['ips'].join(', ')}" if g['node']==name && !g.fetch('ips',[]).empty?}
+  PhoneBindings.read&.fetch('devices',[])&.each{|d|refs<<'持久化设备 '+d['ip'] if d['node']==name}
   refs.uniq
  end
  def self.change(cfg,req,mapping=[],registry=[])
@@ -89,11 +90,11 @@ module PhoneNodes
   {'config'=>cfg,'registry'=>registry,'summary'=>summary(node).merge('operation'=>op)}
  end
  def self.state_fingerprint(raw)
-  fingerprint(raw+"\0"+(File.file?(PhoneNodeRegistry.path) ? File.binread(PhoneNodeRegistry.path) : '')+"\0"+(File.file?('/etc/phone-dns/mapping.yaml') ? File.binread('/etc/phone-dns/mapping.yaml') : ''))
+  fingerprint(raw+"\0"+(File.file?(PhoneNodeRegistry.path) ? File.binread(PhoneNodeRegistry.path) : '')+"\0"+(File.file?('/etc/phone-dns/mapping.yaml') ? File.binread('/etc/phone-dns/mapping.yaml') : '')+"\0"+PhoneBindings.raw)
  end
  def self.apply(path,req)
   PhoneApply.transaction(path,expected_revision:req['revision'],revision:lambda{state_fingerprint(File.binread(path))}) do
-   cfg=YAML.safe_load(File.binread(path),aliases:true);mapping=PanelStore.read('/etc/phone-dns/mapping.yaml',[])
+   cfg=PhoneBindings.compose(YAML.safe_load(File.binread(path),aliases:true));mapping=PanelStore.read('/etc/phone-dns/mapping.yaml',[])
    change=change(cfg,req,mapping,PhoneNodeRegistry.read)
    # A newly introduced registry must be removed by rollback if it did not exist.
    PhoneNodeRegistry.write(change['registry'])
@@ -122,7 +123,7 @@ module PhoneNodes
   result
  end
  def self.cli(mode,request=nil)
-  path=source;raw=File.binread(path);cfg=YAML.safe_load(raw,aliases:true)
+  path=source;raw=File.binread(path);cfg=PhoneBindings.compose(YAML.safe_load(raw,aliases:true))
   return {'ok'=>true,'prefix'=>PhoneSettings['node_prefix'],'nodes'=>(cfg['proxies']||[]).map{|n|summary(n).merge('editable'=>n['type']=='socks5'&&PhoneSettings.phone?(n['name']),'managed'=>PhoneNodeRegistry.read.any?{|m|m['name']==n['name']},'references'=>references(cfg,n['name'],PanelStore.read('/etc/phone-dns/mapping.yaml',[])))}} if mode=='catalog'
   req=YAML.safe_load(File.read(request),aliases:false)
   if mode=='preview'

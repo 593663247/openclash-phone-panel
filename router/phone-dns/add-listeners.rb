@@ -1,4 +1,5 @@
 require_relative 'settings'
+require_relative 'panel-store'
 require 'yaml'
 f=ARGV.fetch(0);p=YAML.load_file(f,aliases:true);ls=YAML.load_file('/etc/phone-dns/listeners.yaml',aliases:true)
 # Default UDP on for phone SOCKS5 nodes; preserve an explicit administrator choice.
@@ -11,4 +12,4 @@ if p['sniffer']
  ips=YAML.load_file('/etc/phone-dns/mapping.yaml').flat_map{|g|g['ips']}.map{|ip|ip+'/32'}
  p['sniffer']['skip-src-address']=((p['sniffer']['skip-src-address']||[])+ips).uniq
 end
-File.write(f,p.to_yaml)
+PanelStore.atomic(f,p.to_yaml)

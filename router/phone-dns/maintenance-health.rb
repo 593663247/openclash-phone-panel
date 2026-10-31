@@ -45,11 +45,20 @@ module PhoneMaintenanceHealth
  def self.cleanup_plan(req)
   rows=inventory;selected=req['ids'];raise '请选择 1～20 条备份' unless selected.is_a?(Array)&&(1..20).include?(selected.size)&&selected.uniq.size==selected.size
   # Keep recent snapshots and any release/linked maintenance backup. Only standalone old transactions qualify.
-  candidates=rows.select{|r|r['kind']=='phone-panel-transactions'&&r['directory']}.drop(3).select{|r|r['at']<Time.now.to_i-7*86400}
+  protected=protected_backups
+  candidates=rows.select{|r|r['kind']=='phone-panel-transactions'&&r['directory']}.drop(3).select{|r|r['at']<Time.now.to_i-7*86400&&!protected.include?(r['id'])}
   chosen=selected.map{|id|candidates.find{|r|r['id']==id}||raise('仅可整理超过七天、且不属于最近三条的独立事务备份')}
   live=(Dir.glob(PanelStore.path('/etc/phone-dns/operations/*.json'))+Dir.glob(PanelStore.path('/etc/phone-dns/tasks/*.yaml'))).any?{|p|%w[running queued].include?(PanelStore.read(p,{})['status'])}
   raise '有活动任务，请等待完成后整理' if live
   {'ok'=>true,'items'=>chosen,'revision'=>Digest::SHA256.hexdigest(PanelStore.json(chosen)),'bytes'=>chosen.sum{|r|r['bytes']},'warning'=>'仅移到路由器回收目录，不删除、不立即释放磁盘。至少保留最近三条，且只处理超过七天的独立事务备份。'}
+ end
+ def self.protected_backups
+  current=PanelStore.read(PanelStore.state+'/bindings-last-good.yaml',{})['backup']
+  pending=Dir.glob(PanelStore.path('/etc/phone-dns/operations/*.json')).filter_map do |file|
+   record=PanelStore.read(file,{})
+   record['backup'] if record['recovery_required']||%w[queued running interrupted].include?(record['status'])
+  end
+  ([current]+pending).compact
  end
  def self.cleanup(req)
   lock=File.open(PanelStore.path('/var/lock/phone-panel.lock'),'a',0600);raise '配置操作中' unless lock.flock(File::LOCK_EX|File::LOCK_NB)
@@ -73,9 +82,11 @@ module PhoneMaintenanceHealth
  def self.info
   rows=inventory
   recent=rows.select{|r|r['kind']=='phone-panel-transactions'&&r['directory']}.first(3).map{|r|r['id']}
+  protected=protected_backups
   recycle=PanelStore.path('/root/phone-panel-backup-recycle');recycle_bytes=Dir.exist?(recycle) ? bytes(recycle) : 0
   rows.each do |r|
    r['protection_reason']=if r['kind']!='phone-panel-transactions'||!r['directory'];'旧版记录或关联备份，不支持回收'
+   elsif protected.include?(r['id']);'恢复引用保护'
    elsif recent.include?(r['id']);'最近三条保护'
    elsif r['at']>=Time.now.to_i-7*86400;'未满七天'
    end
