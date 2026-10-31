@@ -74,12 +74,32 @@ module PhoneApply
   command('fw4','check')
   {'core'=>true,'bindings'=>true,'dns_listeners'=>true,'guard'=>true,'business'=>'未验证手机实际业务及完整 UDP'}
  end
- def self.transaction(path,expected_revision:nil,revision:nil,network:true)
+ def self.restore_files(snapshots,files)
+  errors=[]
+  snapshots.each do |p,v|
+   begin
+    v ? atomic(p,v) : (File.delete(p) if File.file?(p))
+    raise 'Snapshot mismatch' unless v ? (File.file?(p) && File.binread(p)==v) : !File.exist?(p)
+   rescue=>e
+    errors<<File.basename(p)+' ('+e.class.to_s+')'
+   end
+  end
+  (Dir.glob(self.path('/etc/phone-dns/group-*.conf'))-files).each do |p|
+   begin;File.delete(p);rescue=>e;errors<<File.basename(p)+' ('+e.class.to_s+')';end
+  end
+  errors
+ end
+ def self.transaction(path,expected_revision:nil,revision:nil,network:true,postcheck:nil)
   lock=File.open(self.path('/var/lock/phone-panel.lock'),'w',0600)
   raise '另一个配置任务正在运行' unless lock.flock(File::LOCK_EX|File::LOCK_NB)
   phase('检查配置版本与未保存修改')
   %w[dhcp phone_panel openclash].each{|s|raise "#{s} 有未保存修改" unless PanelStore.run('uci','changes',s).strip.empty?}
-  raise '配置已变化，请重新预览' if expected_revision && revision.call!=expected_revision
+  if revision
+   raise '请先预览配置后再确认应用' unless expected_revision.is_a?(String) && !expected_revision.empty?
+   raise '配置已变化，请重新预览' unless revision.call==expected_revision
+  elsif expected_revision
+   raise '缺少配置版本检查'
+  end
   root=self.path('/root/phone-panel-transactions');PanelStore.mkdir(root)
   dir=root+'/'+Time.now.strftime('%Y%m%d%H%M%S%9N')+'-'+Process.pid.to_s;PanelStore.mkdir(dir);@log=dir+'/commands.log'
   files=([path,'/etc/openclash/'+File.basename(path),'/etc/config/dhcp','/etc/nftables.d/90-phone-fixed-egress.nft','/etc/phone-dns/config.json','/etc/phone-dns/managed-nodes.yaml']+Dir.glob(self.path('/etc/phone-dns/*.yaml'))+Dir.glob(self.path('/etc/phone-dns/group-*.conf'))).uniq
@@ -100,6 +120,7 @@ module PhoneApply
     command('/etc/init.d/dnsmasq','reload')
    end
    checks=verify(path)
+   checks.merge!(postcheck.call) if postcheck
    if result && result['removed_node']
     runtime=YAML.safe_load(File.binread(self.path('/etc/openclash/'+File.basename(path))),aliases:true)
     raise '删除节点仍存在于运行配置' if runtime.fetch('proxies',[]).any?{|n|n['name']==result['removed_node']}
@@ -107,17 +128,14 @@ module PhoneApply
    {'ok'=>true,'message'=>'应用及运行配置验收通过；手机换址后请重连 Wi-Fi，实际业务及 UDP 另行检测。','backup'=>dir,'checks'=>checks}.merge(result || {})
   rescue => failure
    phase('应用失败，恢复文件与网络')
-   file_ok=true;runtime_ok=false;restore_error=nil
-   begin
-    snapshots.each{|p,v|v ? atomic(p,v) : (File.delete(p) if File.file?(p))}
-    (Dir.glob(self.path('/etc/phone-dns/group-*.conf'))-files).each{|p|File.delete(p)}
-   rescue=>e;file_ok=false;restore_error=e.class.to_s;end
+   errors=restore_files(snapshots,files)
+   file_ok=errors.empty?;runtime_ok=false;restore_error=errors.empty? ? nil : '文件恢复未完成：'+errors.join('、')
    if file_ok
     begin
      command('uci','revert','dhcp');restart;verify(path);runtime_ok=true
     rescue=>e;restore_error=e.message;end
    end
-   {'error'=>failure.message,'files_restored'=>file_ok,'runtime_restored'=>runtime_ok,'rolled_back'=>file_ok&&runtime_ok,'rollback_error'=>restore_error,'backup'=>dir,'diagnostic_log'=>@log}
+   {'error'=>failure.message,'files_restored'=>file_ok,'runtime_restored'=>runtime_ok,'rolled_back'=>file_ok&&runtime_ok,'recovery_required'=>!(file_ok&&runtime_ok),'rollback_error'=>restore_error,'backup'=>dir,'diagnostic_log'=>@log}
   end
  ensure
   @log=nil;lock.close if lock

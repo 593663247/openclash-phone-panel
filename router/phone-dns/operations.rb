@@ -74,7 +74,7 @@ module PhoneOperations
   end
   record=PanelStore.read(path,record)
   record.merge!('result'=>result['result'],'status'=>result['ok'] ? 'done' : 'failed','stage'=>result['ok'] ? '完成' : '失败','message'=>result['message'] || result['error'],
-   'backup'=>result['backup'],'files_restored'=>result['files_restored'],'runtime_restored'=>result['runtime_restored'],'checks'=>result['checks'],'finished_at'=>Time.now.to_i)
+   'backup'=>result['backup'],'files_restored'=>result['files_restored'],'runtime_restored'=>result['runtime_restored'],'recovery_required'=>result['recovery_required'],'rollback_error'=>result['rollback_error'],'checks'=>result['checks'],'finished_at'=>Time.now.to_i)
   PanelStore.write(path,record)
  rescue=>e
   record=path ? PanelStore.read(path,record || {'id'=>id}) : {'id'=>id};record.merge!('status'=>'interrupted','recovery_required'=>true,'stage'=>'任务异常','message'=>e.class.to_s+'：后台任务未正常返回，请核对运行状态与备份，切勿重复提交');PanelStore.write(path,record) if path

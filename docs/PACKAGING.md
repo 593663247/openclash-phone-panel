@@ -3,7 +3,7 @@
 Build from a clean tracked checkout:
 
 ```sh
-python3 scripts/build-package.py --version 2026.10.31-2 --output /tmp/phone-panel-release
+python3 scripts/build-package.py --version 1.0.1-1 --output /tmp/phone-panel-release
 python3 tests/test-package.py
 ```
 

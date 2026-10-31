@@ -53,14 +53,19 @@ begin
  end
  raise 'Unsupported mode' unless mode=='apply'
  revision=lambda {DeviceEdit.revision_data(files.map{|p|File.exist?(p) ? File.binread(p) : "--- []\n"},(File.file?('/etc/config/phone_panel') ? File.binread('/etc/config/phone_panel') : '')).then{|data|require 'digest';Digest::SHA256.hexdigest(data)}}
- outcome=PhoneApply.transaction(f,expected_revision:req['revision'],revision:revision,network:req['operation']!='rename') do
+ expected_lease=nil
+ postcheck=lambda {DeviceEdit.verify_lease(expected_lease,lambda{|key|PanelStore.run('uci','-q','get',key)})}
+ outcome=PhoneApply.transaction(f,expected_revision:req['revision'],revision:revision,network:req['operation']!='rename',postcheck:postcheck) do
   migration=migration_check.call if migration;name_update=name_check.call if name_update
   files.first(3).zip([result['config'],result['mapping'],result['devices']]).each{|p,v|PhoneApply.atomic(p,v.to_yaml)}
   if migration
    device=result['devices'].find{|d|d['ip']==migration['new_ip']};name=DeviceEdit.dhcp_hostname(device && device['name'])
+   expected_lease={'section'=>migration['section'],'ip'=>migration['new_ip'],'mac'=>migration['mac']}
+   expected_lease['name']=name if name
    PhoneApply.command('uci','set',"dhcp.#{migration['section']}.name=#{name}") if name
    PhoneApply.command('uci','set',"dhcp.#{migration['section']}.ip=#{migration['new_ip']}")
   elsif name_update
+   expected_lease=name_update
    PhoneApply.command('uci','set',"dhcp.#{name_update['section']}.name=#{name_update['name']}")
   end
   PhoneApply.command('uci','commit','dhcp') if migration || name_update

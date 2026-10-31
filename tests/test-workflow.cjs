@@ -9,6 +9,8 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),{JSDOM}=require
  records=[{id:'test',action:'device_edit',status:'running',stage:'验证配置'}];await flow.poll();assert(flow.busy());assert.match($('operation-list').textContent,/验证配置/);
  w.sessionStorage.setItem('phone-panel-current-operation','test');records=[{id:'test',action:'device_edit',status:'done',stage:'完成',message:'success'}];await flow.poll();assert(!flow.busy());assert.equal(refreshes,1);assert.equal(w.sessionStorage.getItem('phone-panel-current-operation'),null);
  records=[{id:'other',action:'device_edit',status:'interrupted',recovery_required:true,stage:'执行中断',message:'inspect backups'}];await flow.poll();assert.match($('operation-list').textContent,/不会自动重试/);
+ records=[{id:'rollback',action:'device_edit',status:'failed',files_restored:false,runtime_restored:false,recovery_required:true,rollback_error:'first.yaml (Errno::EACCES)'}];await flow.poll();assert.match($('operation-list').textContent,/恢复详情：first.yaml/);assert.match($('operation-list').textContent,/需要人工核查/);
+ records=[{id:'dhcp',action:'device_edit',status:'done',checks:{dhcp_static:true}}];await flow.poll();assert.match($('operation-list').textContent,/DHCP 静态配置验收通过/);
  records=Array.from({length:8},(_,i)=>({id:'history-'+i,action:'node_test',subject:'fixture node',status:i===0?'failed':'done',at:100+i,result:{dns_ok:true,exit_ok:true,udp:{udp_ok:false}}}));
  $('operation-filter').value='all';$('operation-filter').onchange();await flow.poll();
  assert.equal($('operation-list').querySelectorAll('details').length,5);assert.match($('operation-list').textContent,/节点检测/);assert.match($('operation-list').textContent,/UDP 失败/);

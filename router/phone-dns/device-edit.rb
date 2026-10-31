@@ -15,6 +15,21 @@ module DeviceEdit
   raise '租约标识无效' unless owner.fetch('section','').match?(/\A(?:[a-zA-Z0-9_]+|@host\[\d+\])\z/)
   owner
  end
+ def self.verify_lease(expected,reader)
+  return {} unless expected
+  section=expected.fetch('section')
+  raise '租约标识无效' unless section.match?(/\A(?:[a-zA-Z0-9_]+|@host\[\d+\])\z/)
+  raise '静态租约配置段未生效' unless reader.call("dhcp.#{section}").strip=='host'
+  %w[ip mac name].each do |key|
+   next unless expected.key?(key)
+   actual=reader.call("dhcp.#{section}.#{key}").strip
+   wanted=expected.fetch(key).to_s
+   actual=actual.downcase.split.sort.join(' ') if key=='mac'
+   wanted=wanted.downcase.split.sort.join(' ') if key=='mac'
+   raise "静态租约 #{key} 验收失败，请检查恢复结果" unless actual==wanted
+  end
+  {'dhcp_static'=>true,'device_lease'=>'未验证手机是否已获取新租约，请重连 Wi-Fi 后确认'}
+ end
  # sections contain explicit UCI section identifiers, never caller-supplied paths.
  def self.ip_migration(req,sections,leases,neighbors)
   old=req.fetch('ip');target=req.fetch('new_ip').to_s.strip

@@ -1,6 +1,15 @@
 # 更新日志 / Changelog
 
-## Unreleased — maintenance checks and UI polish
+## [1.0.1] — 2026-10-31
+
+- Verify the committed DHCP section, fixed IP, preserved MAC and supported hostname again after service reload for device edits; mismatches trigger the shared rollback. A committed static assignment does not establish that the phone has renewed its lease.
+- Require a nonempty preview revision for versioned transactions; reject missing or stale previews before mutation.
+- Continue restoring remaining snapshot files after one restore fails, compare restored bytes, and still clean newly generated DNS files. Incomplete file recovery does not restart partially restored networking.
+- Surface rollback failure details and required manual recovery in the task center; show DHCP acceptance separately from phone business/UDP validation.
+- Add regressions for preview gating, post-reload DHCP mismatch, partial restore failure, snapshot mismatch and recovery UI. Use the current Python interpreter for portable package tests.
+- Include the maintenance checks and UI polish below from the previously unreleased main branch.
+
+### Maintenance checks and UI polish
 
 - Gate update discovery and installation on conservative disk-space, command dependency, Ruby version, core, pending UCI edit and operation-lock checks.
 - Add backup size/time inventory and previewed reversible recycling of standalone transaction backups older than seven days, keeping at least three recent snapshots. Recycling does not free disk space or permanently delete data.

@@ -65,3 +65,17 @@ raise unless DeviceEdit.name_lease(req['ip'],[host])['section']=='cfg123abc'
 rejected=false;begin;DeviceEdit.name_lease(req['ip'],[host,host.dup]);rescue;rejected=true;end
 raise 'Ambiguous DHCP name target accepted' unless rejected
 puts 'DHCP hostname validation and unique static-lease selection PASS'
+
+expected={'section'=>'phone_13','ip'=>'192.168.1.113','mac'=>'02:AA:BB:CC:DD:EE','name'=>'us-13'}
+saved={'dhcp.phone_13'=>'host','dhcp.phone_13.ip'=>expected['ip'],'dhcp.phone_13.mac'=>expected['mac'].downcase,'dhcp.phone_13.name'=>'us-13'}
+reader=lambda{|key|saved.fetch(key)}
+raise unless DeviceEdit.verify_lease(expected,reader)['dhcp_static']
+%w[ip mac name].each do |field|
+ key='dhcp.phone_13.'+field;original=saved[key];saved[key]='incorrect'
+ rejected=false
+ begin;DeviceEdit.verify_lease(expected,reader);rescue;rejected=true;end
+ raise "DHCP #{field} mismatch accepted" unless rejected
+ saved[key]=original
+end
+raise unless DeviceEdit.verify_lease(nil,reader)=={}
+puts 'Post-reload DHCP acceptance: IP, case-insensitive MAC and hostname mismatches rejected PASS'

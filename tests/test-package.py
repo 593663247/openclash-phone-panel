@@ -1,8 +1,8 @@
 """Validate standard Windows ZIP and opkg archive structure without installing."""
-import hashlib,io,pathlib,subprocess,tarfile,tempfile,zipfile
+import hashlib,io,pathlib,subprocess,tarfile,tempfile,zipfile,sys
 root=pathlib.Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix='phone-package-') as temp:
- subprocess.run(['python3',str(root/'scripts/build-package.py'),'--output',temp],cwd=root,check=True,stdout=subprocess.DEVNULL)
+ subprocess.run([sys.executable,str(root/'scripts/build-package.py'),'--output',temp],cwd=root,check=True,stdout=subprocess.DEVNULL)
  out=pathlib.Path(temp)
  bundle=next(out.glob('*Windows.zip'))
  with zipfile.ZipFile(bundle) as z:
