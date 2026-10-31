@@ -1,5 +1,11 @@
 # 更新日志 / Changelog
 
+## [1.2.1] — 2026-11-01
+
+- Repair the independent boot guard omitted by older online updater processes, using only the SHA-256 verified script from the installed source bundle. Enable it before activating persistent bindings; reject missing, altered or linked repair sources.
+- Avoid restarting an untouched OpenClash/DNS runtime when configuration preparation fails. Restore files and guard state, then independently verify the existing runtime; failures after service activation still trigger a full recovery restart.
+- Add upgrade-omission, tampered/missing helper and rollback regressions. Router service availability and phone traffic still require physical acceptance.
+
 ## [1.2.0] — 2026-11-01
 
 - Add a versioned independent device-binding registry, stable MAC identity and exact owned-rule history, preserving rename/rebind/IP changes and explicit deletions across configuration replacements.

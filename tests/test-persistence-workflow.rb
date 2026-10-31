@@ -6,7 +6,9 @@ PhoneSettings.define_singleton_method(:values){@fixture_settings ||= validate({}
 fixture_directory do |root|
  ENV['PHONE_PANEL_TEST']='1';ENV['PHONE_PANEL_TEST_ROOT']=root
  %w[/etc/openclash/config /etc/config /etc/nftables.d /var/lock /etc/phone-dns].each{|dir|PanelStore.mkdir(PanelStore.path(dir))}
- PanelStore.mkdir(PanelStore.path('/etc/init.d'));File.binwrite(PanelStore.path('/etc/init.d/phone-panel-guard'),'fixture')
+ PanelStore.mkdir(PanelStore.path('/etc/init.d'))
+ bundled=PanelStore.path('/usr/share/phone-panel/router/phone-dns/phone-panel-guard.init')
+ PanelStore.mkdir(File.dirname(bundled));File.binwrite(bundled,File.binread(File.expand_path('../router/phone-dns/phone-panel-guard.init',__dir__)))
  a='手机-01-示例';b='手机-02-示例';ip='192.168.1.101';mac='02:11:22:33:44:55'
  proxy={'name'=>a,'type'=>'socks5','server'=>'192.0.2.10','port'=>1080}
  cfg={'proxies'=>[proxy],'rules'=>["SRC-IP-CIDR,#{ip}/32,#{a}",'MATCH,DIRECT'],'sniffer'=>{}}
@@ -65,8 +67,19 @@ fixture_directory do |root|
  assert(preview['count']==1&&!File.exist?(PhoneBindings.path),'migration preview must be read-only')
  stale=preview['revision'];File.binwrite(PanelStore.path('/etc/config/phone_panel'),'changed fixture settings')
  rejects('migration preview must be revision gated'){PhoneBindingManager.apply({'revision'=>stale})}
+ helper_bytes=File.binread(bundled)
+ [nil,'tampered script'].each do |bytes|
+  bytes ? File.binwrite(bundled,bytes) : File.delete(bundled)
+  calls.clear;preview=PhoneBindingManager.plan
+  rejected=PhoneBindingManager.apply({'revision'=>preview['revision']})
+  assert(rejected['error']&&rejected['files_restored'],'missing or altered repair sources must fail and restore configuration')
+  assert(!File.exist?(PhoneBindings.path)&&!File.exist?(PanelStore.path('/etc/init.d/phone-panel-guard')),'failed helper repair must not persist migration or install untrusted code')
+  assert(!calls.any?{|args|args[0].start_with?('/etc/init.d/')},'helper preflight failures must not restart services')
+ end
+ File.binwrite(bundled,helper_bytes)
  preview=PhoneBindingManager.plan;result=PhoneBindingManager.apply({'revision'=>preview['revision']})
  assert(result['ok'],'migration must persist and validate the running configuration: '+result.to_s)
+ assert(File.binread(PanelStore.path('/etc/init.d/phone-panel-guard'))==File.binread(bundled).gsub("\r\n","\n"),'old updater must repair the omitted init file from bundled code')
  assert(PhoneBindings.info.dig('status','state')=='verified')
  saved_good=PhoneBindings.info['last_good']['backup'];File.delete(PhoneBindings.path);assert(PhoneBindings.info['blocked'],'missing registries must not silently re-import a replaced source');assert(PhoneApply.restore(saved_good)['ok'],'last verified state must repair a missing registry')
  File.binwrite(PhoneBindings.path,'broken: [');assert(PhoneBindings.info['blocked']);assert(PhoneApply.restore(saved_good)['ok'],'a complete snapshot must repair corrupt desired state')

@@ -25,6 +25,19 @@ module PhoneApply
   raise "#{File.basename(args.first)} 执行失败（exit=#{code}，详情保存在路由器私密日志）" unless code==0
   output
  end
+ # Older updater processes copy the source tree but do not know new init mappings.
+ # Repair only the missing helper from the exact shipped script; never execute downloads.
+ def self.ensure_boot_guard
+  destination=path('/etc/init.d/phone-panel-guard')
+  raise '独立保护启动服务不能是符号链接' if File.symlink?(destination)
+  return if File.file?(destination)
+  raise '独立保护启动服务路径异常' if File.exist?(destination)
+  bundled=path('/usr/share/phone-panel/router/phone-dns/phone-panel-guard.init')
+  raise '独立保护启动服务及完整源码缺失，请安装完整 IPK 程序包' unless File.file?(bundled)&&!File.symlink?(bundled)
+  data=File.binread(bundled).gsub("\r\n","\n")
+  raise '独立保护启动脚本校验失败，请安装完整 IPK 程序包' unless Digest::SHA256.hexdigest(data)=='79d681643eef7786b3e776daa5a7773f89f357ccf1e231fe434201e891c9d292'
+  atomic(destination,data);File.chmod(0755,destination);PanelStore.sync_directory(File.dirname(destination))
+ end
  def self.restart
   PhoneBindings.guard
   phase('停止核心并清除快速启动缓存');command('/etc/init.d/openclash','stop')
@@ -192,11 +205,11 @@ module PhoneApply
   metadata=[PanelStore.state+'/bindings-last-good.yaml',PhoneBindings.status_file]
   files=(config_files(path)+metadata+extra_files).uniq;dir,snapshots=snapshot(files);@log=dir+'/commands.log'
   phase('备份已完成，更新配置',{'backup'=>dir})
-  guard_touched=false
+  guard_touched=false;runtime_touched=false
   begin
    result=yield
    if PhoneBindings.read
-    raise '独立保护启动服务缺失，请重新安装完整程序包' unless File.file?(self.path('/etc/init.d/phone-panel-guard'))
+    ensure_boot_guard
     command('/etc/init.d/phone-panel-guard','enable')
     guard_touched=true;PhoneBindings.guard
    end
@@ -206,8 +219,9 @@ module PhoneApply
    command('/usr/bin/ruby','/etc/phone-dns/align-dns.rb',path)
    command('/etc/openclash/clash','-t','-d','/etc/openclash','-f',path)
    command('sing-box','check','-c','/etc/phone-dns/config.json');command('fw4','check')
-   restart
+   runtime_touched=true;restart
    else
+    runtime_touched=true
     command('/etc/init.d/dnsmasq','reload')
    end
    checks=verify(path)
@@ -225,7 +239,7 @@ module PhoneApply
    file_ok=errors.empty?;runtime_ok=false;restore_error=errors.empty? ? nil : '文件恢复未完成：'+errors.join('、')
    if file_ok
     begin
-     %w[dhcp phone_panel openclash].each{|section|command('uci','revert',section)};PhoneSettings.instance_variable_set(:@values,nil) if resolve_source;PhoneBindings.guard(PhoneBindings.read || {'schema'=>1,'revision'=>1,'devices'=>[],'owned_rules'=>[]}) if guard_touched;restart;verify(path);checkpoint(path) if PhoneBindings.read;runtime_ok=true
+     %w[dhcp phone_panel openclash].each{|section|command('uci','revert',section)};PhoneSettings.instance_variable_set(:@values,nil) if resolve_source;PhoneBindings.guard(PhoneBindings.read || {'schema'=>1,'revision'=>1,'devices'=>[],'owned_rules'=>[]}) if guard_touched;restart if runtime_touched;verify(path);checkpoint(path) if PhoneBindings.read;runtime_ok=true
     rescue=>e;restore_error=e.message;end
    end
    {'error'=>failure.message,'files_restored'=>file_ok,'runtime_restored'=>runtime_ok,'rolled_back'=>file_ok&&runtime_ok,'recovery_required'=>!(file_ok&&runtime_ok),'rollback_error'=>restore_error,'backup'=>dir,'diagnostic_log'=>@log}

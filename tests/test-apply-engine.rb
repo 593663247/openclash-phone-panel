@@ -23,10 +23,10 @@ fixture_directory do |root|
   commands=[];failed=false
   PhoneApply.define_singleton_method(:command) do |*args|
    commands<<args
-   if %w[validation_failure recovery_failure].include?(scenario) && args.first=='sing-box'
+   if scenario=='validation_failure' && args.first=='sing-box'
     failed=true;raise 'Injected preflight failure'
    end
-   raise 'Injected recovery failure' if scenario=='recovery_failure' && failed && args==['/etc/init.d/openclash','start']
+   raise 'Injected recovery failure' if scenario=='recovery_failure' && args==['/etc/init.d/openclash','start']
    if args==['/etc/init.d/openclash','start'] && scenario!='stale_runtime';File.binwrite(runtime,File.binread(source));end
    case args.first
    when 'pidof';'123'
@@ -49,7 +49,15 @@ fixture_directory do |root|
    assert(!File.exist?(registry),'new registry must be removed on rollback')
    assert(result['runtime_restored']==(scenario!='recovery_failure'),'never claim runtime recovery from file restore alone')
    assert(result['recovery_required']==(scenario=='recovery_failure'))
+   assert(!commands.any?{|a|a==['/etc/init.d/openclash','stop']},'preflight failure must not restart the untouched core') if scenario=='validation_failure'
   end
+ end
+ unless RUBY_PLATFORM.match?(/mswin|mingw/)
+  PanelStore.mkdir(PanelStore.path('/etc/init.d'))
+  helper=PanelStore.path('/etc/init.d/phone-panel-guard');File.symlink(source,helper)
+  rejects('existing helper symlinks must be rejected'){PhoneApply.ensure_boot_guard}
+  assert(File.binread(source)==cfg.to_yaml.b,'repair must never write through an existing helper link')
+  File.delete(helper)
  end
  first=PanelStore.path('/etc/phone-dns/first.yaml');last=PanelStore.path('/etc/phone-dns/last.yaml')
  generated=PanelStore.path('/etc/phone-dns/group-99.conf')
