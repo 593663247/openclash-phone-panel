@@ -1,5 +1,15 @@
 # 更新日志 / Changelog
 
+## [1.0.2] — 2026-10-31
+
+- Add a dedicated Devices & Nodes category immediately to the right of Home, with consistent horizontal navigation and LuCI route ordering.
+- Move device editing, SOCKS5 node management and DHCP batch addition out of Maintenance; initialize the node catalog on its new route.
+- Collapse task history and backup management by default. Open tasks for new active/recovery events, while respecting manual collapse during unchanged polling.
+- Separate active tasks, recovery-review records and past failures; omit missing subject placeholders.
+- Show five backup entries initially, preserve selection when showing more, explain protected entries and hide full paths behind details. Ignore stale backup previews after selection changes.
+- Keep backup retention and recycling restrictions unchanged; fix checkbox height under global input styles.
+- Add route/DOM and backup interaction regressions, and update entry-point documentation.
+
 ## [1.0.1] — 2026-10-31
 
 - Verify the committed DHCP section, fixed IP, preserved MAC and supported hostname again after service reload for device edits; mismatches trigger the shared rollback. A committed static assignment does not establish that the phone has renewed its lease.

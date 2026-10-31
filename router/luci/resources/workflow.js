@@ -10,7 +10,8 @@
  $('edit-device').onchange=()=>{const p=current.find(p=>p.ip===$('edit-device').value);$('edit-ip').value=p?p.ip:'';if(p){$('edit-name').value=p.hostname||'';$('edit-group').value=String(p.group)}$('edit-ip').dispatchEvent(new root.Event('input'));detail()};
  const names={node_test:'节点检测',device_edit:'设备修改',node_change:'节点变更',device_add:'添加设备',device_batch:'批量添加',initialize:'初始化',upgrade:'程序升级',backup:'创建备份',doctor:'环境检查',dependencies:'安装依赖',repair_hooks:'修复钩子',restore:'配置恢复',restore_release:'程序恢复'};
  const states={queued:'等待执行',running:'执行中',done:'已完成',failed:'失败',interrupted:'执行中断'};
- let records=[],limit=5;const expanded=new Set(),folded=new Set();
+ let records=[],limit=5;const expanded=new Set(),folded=new Set(),announced=new Set();
+ const needsRecovery=o=>o.recovery_required&&!o.historical&&['failed','interrupted'].includes(o.status);
  function outcomes(o){
   if(o.result){const r=o.result,flag=v=>v===true?'通过':v===false?'失败':'未测';return '检测结果：DNS '+flag(r.dns_ok)+'｜出口 '+flag(r.exit_ok)+'｜UDP '+flag(r.udp&&r.udp.udp_ok)}
   if(o.checks)return (o.checks.dhcp_static?'DHCP 静态配置验收通过；':'')+'配置验收通过；手机实际业务及完整 UDP 另行检测';
@@ -18,13 +19,13 @@
  }
  function paint(){
   const filter=$('operation-filter').value,active=records.filter(o=>['queued','running'].includes(o.status));
-  $('operation-count').textContent='进行中 '+active.length+' · 失败/中断 '+records.filter(o=>['failed','interrupted'].includes(o.status)).length+' · 共 '+records.length+' 条';
+  $('operation-count').textContent='进行中 '+active.length+' · 待核查记录 '+records.filter(needsRecovery).length+' · 历史失败 '+records.filter(o=>['failed','interrupted'].includes(o.status)&&!needsRecovery(o)).length;
   const visible=records.filter(o=>filter==='all'||filter==='active'&&['queued','running'].includes(o.status)||filter==='failed'&&['failed','interrupted'].includes(o.status)||filter===o.status);
   $('operation-more').hidden=visible.length<=limit;
   $('operation-list').innerHTML=visible.slice(0,limit).map(o=>{
    const isActive=['queued','running'].includes(o.status),open=expanded.has(o.id)||!folded.has(o.id)&&(isActive||o.id===focused);
    const time=o.at?new Date(o.at*1000).toLocaleString():'时间未知',duration=o.finished_at&&o.at?' · 耗时 '+Math.max(0,o.finished_at-o.at)+' 秒':'';
-   const title=(names[o.action]||o.action)+' · '+(o.subject||'操作对象未记录')+' · '+(o.historical&&o.status==='failed'?'历史失败':states[o.status]||o.status);
+   const title=[names[o.action]||o.action,o.subject,o.historical&&o.status==='failed'?'历史失败':states[o.status]||o.status].filter(Boolean).join(' · ');
    return '<details data-task-id="'+api.esc(o.id)+'" class="notice operation-'+api.esc(o.status)+'" '+(open?'open':'')+'><summary>'+api.esc(title)+'<div class="operation-meta">'+api.esc(time+duration)+'</div></summary><p>'+api.esc(outcomes(o))+'</p><p>阶段：'+api.esc(o.stage||'—')+'</p><p>'+api.esc(o.message||'')+'</p><small>任务编号：'+api.esc(o.id)+'</small>'+(o.files_restored!=null?'<p>文件恢复：'+(o.files_restored?'通过':'未通过')+'；运行态恢复：'+(o.runtime_restored?'通过':'未确认')+'</p>':o.rolled_back!=null?'<p>历史回滚记录：'+(o.rolled_back?'已报告恢复':'未确认恢复')+'</p>':'')+(o.rollback_error?'<p>恢复详情：'+api.esc(o.rollback_error)+'</p>':'')+(o.recovery_required?'<p>⚠ 需要人工核查备份与网络；不会自动重试。</p>':'')+(o.backup?'<small>恢复记录：'+api.esc(o.backup)+'</small>':'')+(o.backup&&o.backup.startsWith('/root/phone-panel-transactions/')?'<button type="button" data-operation-restore="'+api.esc(o.backup)+'">恢复操作前配置（需确认）</button>':'')+(o.result?'<pre>'+api.esc(JSON.stringify(o.result,null,2))+'</pre>':'')+'</details>';
   }).join('')||'没有符合条件的任务';
   $('operation-list').querySelectorAll('[data-task-id]').forEach(el=>el.addEventListener('toggle',()=>{if(!el.isConnected)return;const id=el.dataset.taskId;if(el.open){expanded.add(id);folded.delete(id)}else{expanded.delete(id);folded.add(id)}}));
@@ -35,19 +36,38 @@
   if(refreshing)return;refreshing=true;
   try{const d=await api.get('operations');busy=d.operations.some(o=>['queued','running'].includes(o.status));
    records=d.operations.slice().sort((a,b)=>(b.at||0)-(a.at||0));
+   const attention=records.filter(o=>['queued','running'].includes(o.status)||needsRecovery(o));
+   const attentionKey=o=>o.id+(needsRecovery(o)?':recovery':':active');
+   if(attention.some(o=>!announced.has(attentionKey(o))))$('operation-panel').open=true;
+   attention.forEach(o=>announced.add(attentionKey(o)));
    // Capture open state before replacing DOM; polling never folds a user's details.
    $('operation-list').querySelectorAll('[data-task-id]').forEach(el=>{if(el.open)expanded.add(el.dataset.taskId);else folded.add(el.dataset.taskId)});paint();
    for(const o of d.operations){if(['done','failed','interrupted'].includes(o.status)&&!completed.has(o.id)){completed.add(o.id);if(o.id===root.sessionStorage.getItem('phone-panel-current-operation')){root.sessionStorage.removeItem('phone-panel-current-operation');await api.refresh();document.dispatchEvent(new root.Event('phone-panel-operation-complete'))}}}
   }catch(e){$('operation-note').textContent='暂时读不到任务：'+e.message+'。任务在后台继续，刷新后可恢复查询。'}finally{refreshing=false}
  }
- function watch(id){busy=true;focused=id;root.sessionStorage.setItem('phone-panel-current-operation',id);$('operation-note').textContent='后台任务 '+id+' 已提交，可刷新页面；任务完成前请勿重复操作。';poll()}
- let backupPlan=null;
+ function watch(id){busy=true;focused=id;$('operation-panel').open=true;root.sessionStorage.setItem('phone-panel-current-operation',id);$('operation-note').textContent='后台任务 '+id+' 已提交，可刷新页面；任务完成前请勿重复操作。';poll()}
+ let backupPlan=null,backupRows=[],backupLimit=5,backupRevision=0;const backupSelected=new Set();
  function backupMessage(value){$('backup-result').hidden=false;$('backup-result').textContent=value}
- async function backupInventory(){const d=await api.get('maintenance_health');$('backup-total').textContent=d.count+' 条备份 · '+(d.total_bytes/1048576).toFixed(1)+' MiB · 回收目录 '+((d.recycle_bytes||0)/1048576).toFixed(1)+' MiB';$('backup-items').innerHTML='<table><thead><tr><th>选择</th><th>备份</th><th>大小</th><th>时间</th></tr></thead><tbody>'+d.items.map(r=>'<tr><td><input type="checkbox" data-backup="'+api.esc(r.id)+'" '+(r.recyclable?'':'disabled')+' aria-label="选择备份 '+api.esc(r.id)+'"></td><td>'+api.esc(r.id)+'</td><td>'+api.esc((r.bytes/1048576).toFixed(2))+' MiB</td><td>'+api.esc(new Date(r.at*1000).toLocaleString())+'</td></tr>').join('')+'</tbody></table>';backupPlan=null;$('backup-recycle').hidden=true}
+ function paintBackups(){
+  $('backup-items').innerHTML='<table><thead><tr><th>选择 / 保护原因</th><th>备份</th><th>大小</th><th>时间</th></tr></thead><tbody>'+backupRows.slice(0,backupLimit).map(r=>{
+   const name=r.id.split('/').pop(),reason=r.recyclable?'可回收':r.protection_reason||'受保护，不可回收';
+   return '<tr><td><input type="checkbox" data-backup="'+api.esc(r.id)+'" '+(r.recyclable?'':'disabled')+' '+(backupSelected.has(r.id)?'checked':'')+' aria-label="选择备份 '+api.esc(name)+'"><span class="backup-protection">'+api.esc(reason)+'</span></td><td class="backup-path"><span class="backup-name">'+api.esc(name)+'</span><details><summary>完整路径</summary><small>'+api.esc(r.id)+'</small></details></td><td>'+api.esc((r.bytes/1048576).toFixed(2))+' MiB</td><td>'+api.esc(new Date(r.at*1000).toLocaleString())+'</td></tr>';
+  }).join('')+'</tbody></table>';
+  if(!backupRows.length)$('backup-items').textContent='暂无备份';
+  $('backup-more').hidden=backupRows.length<=backupLimit;
+  $('backup-preview').disabled=backupSelected.size===0;
+ }
+ async function backupInventory(){
+  backupRevision++;backupPlan=null;$('backup-recycle').hidden=true;
+  const d=await api.get('maintenance_health');backupRows=d.items;backupLimit=5;backupSelected.clear();
+  $('backup-total').textContent=d.count+' 条 · '+(d.total_bytes/1048576).toFixed(1)+' MiB · 可回收 '+d.items.filter(r=>r.recyclable).length+' 条 · 回收目录 '+((d.recycle_bytes||0)/1048576).toFixed(1)+' MiB';
+  paintBackups();backupPlan=null;$('backup-recycle').hidden=true;
+ }
  if($('backup-refresh')){ $('backup-refresh').onclick=()=>backupInventory().catch(e=>backupMessage(e.message));
- $('backup-items').onchange=()=>{backupPlan=null;$('backup-recycle').hidden=true};
- $('backup-preview').onclick=async()=>{if(busy)return;try{const ids=Array.from($('backup-items').querySelectorAll('[data-backup]:checked')).map(e=>e.dataset.backup);const d=await api.post('backup_preview',{ids});backupPlan={ids,revision:d.revision};backupMessage(d.items.map(r=>r.id).join('\n')+'\n'+d.warning);$('backup-recycle').hidden=false}catch(e){backupMessage(e.message)}};
+ $('backup-items').onchange=e=>{const box=e.target;if(!box.matches('[data-backup]')||box.disabled)return;if(box.checked)backupSelected.add(box.dataset.backup);else backupSelected.delete(box.dataset.backup);backupRevision++;backupPlan=null;$('backup-recycle').hidden=true;$('backup-preview').disabled=backupSelected.size===0};
+ $('backup-more').onclick=()=>{backupLimit+=5;paintBackups()};
+ $('backup-preview').onclick=async()=>{if(busy)return;const revision=backupRevision;try{const ids=Array.from(backupSelected);const d=await api.post('backup_preview',{ids});if(revision!==backupRevision)return;backupPlan={ids,revision:d.revision};backupMessage(d.items.map(r=>r.id).join('\n')+'\n'+d.warning);$('backup-recycle').hidden=false}catch(e){if(revision===backupRevision)backupMessage(e.message)}};
  $('backup-recycle').onclick=async()=>{if(!backupPlan||busy||!root.confirm('确认将预览的旧备份移入回收目录？不永久删除，也不会释放磁盘空间。'))return;try{const d=await api.post('backup_recycle',backupPlan);backupMessage(d.message+'\n'+d.recycle);await backupInventory()}catch(e){backupMessage(e.message)}};
- backupInventory().catch(e=>backupMessage(e.message));}
+ if($('pp').classList.contains('maintenance-page'))backupInventory().catch(e=>{$('backup-total').textContent='读取失败，展开后重试';backupMessage(e.message)});}
  $('operation-refresh').onclick=poll;poll();root.setInterval(poll,5000);return {update,watch,busy:()=>busy,poll};
 }root.PhonePanelWorkflow={attach};})(typeof window==='undefined'?globalThis:window);

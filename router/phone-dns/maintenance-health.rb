@@ -74,7 +74,13 @@ module PhoneMaintenanceHealth
   rows=inventory
   recent=rows.select{|r|r['kind']=='phone-panel-transactions'&&r['directory']}.first(3).map{|r|r['id']}
   recycle=PanelStore.path('/root/phone-panel-backup-recycle');recycle_bytes=Dir.exist?(recycle) ? bytes(recycle) : 0
-  rows.each{|r|r['recyclable']=r['kind']=='phone-panel-transactions'&&r['directory']&&!recent.include?(r['id'])&&r['at']<Time.now.to_i-7*86400}
+  rows.each do |r|
+   r['protection_reason']=if r['kind']!='phone-panel-transactions'||!r['directory'];'旧版记录或关联备份，不支持回收'
+   elsif recent.include?(r['id']);'最近三条保护'
+   elsif r['at']>=Time.now.to_i-7*86400;'未满七天'
+   end
+   r['recyclable']=r['protection_reason'].nil?
+  end
   {'ok'=>true,'items'=>rows,'recycle_bytes'=>recycle_bytes,'total_bytes'=>rows.sum{|x|x['bytes']},'count'=>rows.size,'at'=>Time.now.to_i,'note'=>'仅统计已知备份目录；不含任意手动备份。暂不自动删除，恢复快照可能相互引用。'}
  end
 end

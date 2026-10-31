@@ -96,7 +96,7 @@ Windows：右键 ZIP → 全部解压。把里面的 {ipkname} 上传到路由�
 安装后不会自动接管网络。先在“服务 → 手机出口与 DNS → 设置”确认网段、路由器 IP、网桥，再在“管理维护”检查并预览初始化，确认后应用。
 安装会尝试以标记块接入 OpenClash 钩子，但仍需确认 OpenClash 已启用对应自定义脚本。旧手动部署/未标记钩子将拒绝覆盖，避免破坏已有配置。
 
-新增 SOCKS5 落地节点位于“管理维护”。填写服务商提供的真实服务器、端口、账号密码和前置代理；预览后确认。随后在设备绑定中选择节点。
+新增 SOCKS5 落地节点位于“主页”右侧的“设备与节点”。填写服务商提供的真实服务器、端口、账号密码和前置代理；预览后确认。随后在设备绑定中选择节点。
 只检查语法不代表真实出口/UDP可用；真实新节点仍需绑定后检测。
 
 卸载保护：普通移除会被阻止，避免突然失去防直连保护；请先按源码 docs/MAINTENANCE.md 的停用/恢复流程处理。
@@ -113,7 +113,7 @@ Do not rename or extract the IPK. It is a router package, not a Windows applicat
 Requires opkg, fw4, LuCI, OpenClash and Ruby >= 3.1. Not for apk-based or legacy fw3 systems. Dependencies come from router feeds and are NOT bundled.
 Installation does not activate routing. Configure subnet, router IP and bridge under Settings, then check/preview initialization under Maintenance before confirming.
 Marked OpenClash hooks are integrated automatically; enable the corresponding custom hooks in OpenClash. Existing manual deployments or ambiguous legacy hooks are rejected.
-SOCKS5 node creation is under Maintenance. Real provider connectivity and UDP require validation after binding.
+SOCKS5 node creation is under Devices & Nodes, immediately to the right of Home. Real provider connectivity and UDP require validation after binding.
 Normal removal is blocked for safety: follow docs/MAINTENANCE.md to disable/recover first.
 Package structure, checksums, script syntax and automated regressions are verified; physical router installation remains unverified.
 

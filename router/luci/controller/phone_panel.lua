@@ -11,7 +11,8 @@ end
 function index()
  local p=entry({'admin','services','phone_panel'},alias('admin','services','phone_panel','home'),'手机出口与 DNS',55)
  entry({'admin','services','phone_panel','home'},template('phone_panel'),'主页',10)
- entry({'admin','services','phone_panel','maintenance'},template('phone_panel'),'管理维护',20)
+ entry({'admin','services','phone_panel','management'},template('phone_panel'),'设备与节点',20)
+ entry({'admin','services','phone_panel','maintenance'},template('phone_panel'),'管理维护',30)
  entry({'admin','services','phone_panel','settings'},cbi('phone_panel_settings'),'设置 / Settings',60)
  entry({'admin','services','phone_panel','initialize'},post('initialize_panel')).leaf=true
  entry({'admin','services','phone_panel','tasks'},call('panel_tasks')).leaf=true

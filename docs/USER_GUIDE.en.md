@@ -77,7 +77,7 @@ The current tab stores the pending job ID in session storage and resumes polling
 
 ## 8. Maintenance page
 
-The separate maintenance page preserves initialization previews, allowlisted maintenance jobs and managed device editing. It does not accept arbitrary shell commands. Editing fields or changing the node catalog invalidates edit previews. Hook repair refuses unmarked legacy integration rather than replacing it.
+Navigation is Home → Devices & Nodes → Maintenance → Settings. Devices & Nodes is immediately to the right of Home and contains managed device editing, SOCKS5 node management and batch addition. Maintenance keeps initialization, allowlisted jobs, updates and backups. Task history and backup management are collapsed by default. New active/recovery tasks open the task panel; unchanged polling respects manual collapse. Backup lists start with five entries and explain protected selections. It does not accept arbitrary shell commands. Editing fields or changing the node catalog invalidates edit previews. Hook repair refuses unmarked legacy integration rather than replacing it.
 
 ## 9. Observability and batch/version management
 

@@ -14,6 +14,8 @@ fixture_directory do |root|
  PhoneMaintenanceHealth.define_singleton_method(:space){|p|0};assert(!PhoneMaintenanceHealth.preflight['ok'],'low disk must block update')
  rows=PhoneMaintenanceHealth.info
  assert(rows['count']==5,'symlinks must not enter inventory');assert(rows['items'].count{|r|r['recyclable']}==2)
+ assert(rows['items'].first(3).all?{|r|r['protection_reason']=='最近三条保护'})
+ assert(rows['items'].select{|r|r['recyclable']}.all?{|r|r['protection_reason'].nil?})
  id=rows['items'].last['id'];plan=PhoneMaintenanceHealth.cleanup_plan({'ids'=>[id]})
  rejects{PhoneMaintenanceHealth.cleanup({'ids'=>[id],'revision'=>'stale'})}
  result=PhoneMaintenanceHealth.cleanup({'ids'=>[id],'revision'=>plan['revision']})
