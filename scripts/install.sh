@@ -34,6 +34,7 @@ mkdir -p /usr/lib/lua/luci/model/cbi
 cp "$ROOT/router/config/phone_panel" /etc/config/
 cp "$ROOT/router/luci/model/cbi/phone_panel_settings.lua" /usr/lib/lua/luci/model/cbi/
 cp "$ROOT/router/luci/view/phone_panel.htm" /usr/lib/lua/luci/view/
+ruby /etc/phone-dns/luci-cache.rb
 cp "$ROOT/router/nftables/90-phone-fixed-egress.nft" /etc/nftables.d/
 cp "$ROOT/router/openclash/phone-routing.sh" /etc/openclash/custom/
 chmod 755 /etc/openclash/custom/phone-routing.sh

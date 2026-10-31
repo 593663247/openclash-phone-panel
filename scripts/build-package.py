@@ -69,8 +69,8 @@ set -eu
 [ -n "${IPKG_INSTROOT:-}" ] && exit 0
 chmod 700 /etc/phone-dns /etc/phone-dns/jobs /etc/phone-dns/panel-requests
 chmod 600 /etc/phone-dns/*.yaml /etc/phone-dns/config.json
+ruby /etc/phone-dns/luci-cache.rb
 ruby /usr/share/phone-panel/scripts/hooks.rb install || { echo 'Hook integration failed; original hooks retained. Resolve before initialization.'; exit 1; }
-rm -f /tmp/luci-indexcache
 echo 'Installed without network activation. Open Services > Phone panel > Settings; confirm subnet/bridge, check hooks, then preview and initialize from Maintenance. OpenClash custom hooks must be enabled.'
 '''
  prerm='''#!/bin/sh

@@ -1,5 +1,12 @@
 # 更新日志 / Changelog
 
+## [1.0.3] — 2026-10-31
+
+- Remove the duplicate in-page navigation introduced in 1.0.2. Use the native LuCI tabs, keeping Devices & Nodes immediately after Home.
+- Refresh legacy and suffixed LuCI menu caches plus panel-specific compiled module caches after IPK/manual installation and program activation/recovery; do not restart web or network services.
+- Refresh menu caches before optional hook integration so hook errors cannot leave the old menu visible after new templates are installed.
+- Add regression coverage for native tab ordering, single navigation, cache invalidation and preservation of unrelated files.
+
 ## [1.0.2] — 2026-10-31
 
 - Add a dedicated Devices & Nodes category immediately to the right of Home, with consistent horizontal navigation and LuCI route ordering.

@@ -37,9 +37,6 @@
 
 /* Keep daily management separate; the three routes share scripts and DOM IDs. */
 #pp.home-page .console-only,#pp.home-page .management-only,#pp.maintenance-page .management-only,#pp.management-page .maintenance-only,#pp.management-page .home-only{display:none!important}
-#pp .console-nav{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 18px;padding-bottom:12px;border-bottom:1px solid var(--line)}
-#pp .console-nav a{padding:9px 15px;border-radius:8px;color:var(--muted);text-decoration:none;font-size:14px}
-#pp .console-nav a[aria-current=page]{background:#e2f3ee;color:var(--mint);font-weight:700}
 #pp .management-only>.notice,#pp .console-only>.notice,#pp details.console-panel{border:1px solid var(--line);border-radius:14px;padding:20px;margin:14px 0;box-shadow:0 3px 12px #193b4a05}
 #pp details.console-panel>summary{display:flex;align-items:center;gap:12px;flex-wrap:wrap;cursor:pointer;list-style:none;font-size:13px;min-height:28px}
 #pp details.console-panel>summary::-webkit-details-marker{display:none}
@@ -51,15 +48,9 @@
 #pp .backup-path{max-width:480px;white-space:normal;overflow-wrap:anywhere}
 #pp .backup-name{font-weight:600}#pp .backup-protection{font-size:11px;color:var(--muted)}
 #pp input[type=checkbox]{min-height:22px!important;max-height:22px!important}
-@media(max-width:700px){#pp .management-only>.notice,#pp .console-only>.notice,#pp details.console-panel{padding:15px}#pp .console-nav a{padding:8px 10px}#pp details.console-panel>summary span[role=status]{flex-basis:calc(100% - 30px);order:3;margin-left:24px}}
+@media(max-width:700px){#pp .management-only>.notice,#pp .console-only>.notice,#pp details.console-panel{padding:15px}#pp details.console-panel>summary span[role=status]{flex-basis:calc(100% - 30px);order:3;margin-left:24px}}
 </style>
 <div id="pp" class="<%=maintenance and 'maintenance-page' or management and 'management-page' or 'home-page'%>">
- <nav class="console-nav" aria-label="面板类目">
- <a href="<%=luci.dispatcher.build_url('admin','services','phone_panel','home')%>"<%=not maintenance and not management and ' aria-current="page"' or ''%>>主页</a>
- <a href="<%=luci.dispatcher.build_url('admin','services','phone_panel','management')%>"<%=management and ' aria-current="page"' or ''%>>设备与节点</a>
- <a href="<%=luci.dispatcher.build_url('admin','services','phone_panel','maintenance')%>"<%=maintenance and ' aria-current="page"' or ''%>>管理维护</a>
- <a href="<%=luci.dispatcher.build_url('admin','services','phone_panel','settings')%>">设置</a>
- </nav>
  <div class="maintenance-heading console-only"><h2><%=management and "设备与节点" or "管理维护"%></h2><p><%=management and "设备名称、固定 IP、节点绑定与 SOCKS5 落地节点。" or "初始化、环境检查、版本更新与备份管理。"%></p></div>
  <div class="hero home-only"><div><div class="eyebrow">PHONE NETWORK · LOCAL CONSOLE</div><h2>手机出口与独立 DNS</h2><div class="sub"><span id="pp-count">—</span> 台手机 · 全部手机节点 · Google 加密解析<br>添加设备前检查冲突，预览确认后统一应用。</div></div><div class="readonly">● 安全添加 · LuCI 登录保护</div></div>
  <div class="console-only"><details class="notice console-panel" id="operation-panel"><summary><strong>任务与恢复</strong><span id="operation-count" role="status">正在读取…</span><span class="panel-hint">查看任务</span></summary><div class="panel-body"><button id="operation-refresh" type="button">刷新任务</button><p id="operation-note">任务在后台执行，刷新页面后仍可查看；中断任务不会自动重试。</p><div class="pf-tools"><label>任务筛选 <select id="operation-filter"><option value="all">全部状态</option><option value="active">进行中</option><option value="failed">失败／中断</option><option value="done">已完成</option></select></label><button id="operation-more" type="button">查看更多</button></div><div id="operation-list"></div></div></details></div>

@@ -1,5 +1,6 @@
 require_relative 'panel-store'
 require_relative 'maintenance-health'
+require_relative 'luci-cache'
 
 module PhoneRelease
  REPOSITORY='593663247/openclash-phone-panel'
@@ -197,7 +198,7 @@ module PhoneRelease
   elsif !ENV['PHONE_PANEL_TEST_ROOT']
    PanelStore.capture('nft','delete','table','inet','phone_panel_stats')
   end
-  Dir.glob(PanelStore.path('/tmp/luci-indexcache')+'*').each{|p|File.delete(p) if File.file?(p)}
+  PhoneLuciCache.clear
  end
  def self.stop_monitor_for_restore(id)
   service=PanelStore.path('/etc/init.d/phone-panel-monitor')
