@@ -6,6 +6,7 @@ PhoneSettings.define_singleton_method(:values){@fixture_settings ||= validate({}
 fixture_directory do |root|
  ENV['PHONE_PANEL_TEST']='1';ENV['PHONE_PANEL_TEST_ROOT']=root
  %w[/etc/openclash/config /etc/config /etc/nftables.d /var/lock /etc/phone-dns].each{|dir|PanelStore.mkdir(PanelStore.path(dir))}
+ PanelStore.mkdir(PanelStore.path('/etc/init.d'));File.binwrite(PanelStore.path('/etc/init.d/phone-panel-guard'),'fixture')
  a='手机-01-示例';b='手机-02-示例';ip='192.168.1.101';mac='02:11:22:33:44:55'
  proxy={'name'=>a,'type'=>'socks5','server'=>'192.0.2.10','port'=>1080}
  cfg={'proxies'=>[proxy],'rules'=>["SRC-IP-CIDR,#{ip}/32,#{a}",'MATCH,DIRECT'],'sniffer'=>{}}
@@ -102,6 +103,7 @@ fixture_directory do |root|
  PhoneAlignment.run(source);assert(PhoneBindings.info.dig('status','state')=='generated','reboot derivation is idempotent and does not replay user mutations')
  assert(PhoneBindings.read['revision']==1,'configuration regeneration must not invent device revisions')
  assert(calls.any?{|args|args==['fw4','check']})
+ assert(calls.any?{|args|args==['/etc/init.d/phone-panel-guard','enable']},'migration must enable the new boot helper even after an older online updater staged the code')
 end
 ENV.delete('PHONE_PANEL_TEST_ROOT');ENV.delete('PHONE_PANEL_TEST')
 puts 'Persistence workflow: read-only migration, stale preview, subscription/source/runtime rebuild, missing-node guard, complete cross-config restore, injected failure and reboot recovery PASS'

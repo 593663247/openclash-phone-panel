@@ -58,6 +58,7 @@ fixture_directory do |root|
  PhoneBindings.define_singleton_method(:guard){|document=PhoneBindings.read|true}
  PhoneSettings.instance_variable_set(:@values,PhoneSettings.validate({}))
  ['/etc/openclash/config','/etc/config','/etc/nftables.d','/var/lock','/tmp','/root', '/etc/phone-dns/jobs'].each{|p|PanelStore.mkdir(router_path(p))}
+ PanelStore.mkdir(router_path('/etc/init.d'));File.binwrite(router_path('/etc/init.d/phone-panel-guard'),'fixture')
  nodes=['手机-01-示例','手机-02-示例']
  rows=[{'name'=>'First','ip'=>'192.168.1.101','mac'=>'02:11:22:33:44:55','group'=>1},
  {'name'=>'Second','ip'=>'192.168.1.102','mac'=>'02:11:22:33:44:66','group'=>2}]

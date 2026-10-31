@@ -193,7 +193,11 @@ module PhoneApply
   guard_touched=false
   begin
    result=yield
-   if PhoneBindings.read;guard_touched=true;PhoneBindings.guard;end
+   if PhoneBindings.read
+    raise '独立保护启动服务缺失，请重新安装完整程序包' unless File.file?(self.path('/etc/init.d/phone-panel-guard'))
+    command('/etc/init.d/phone-panel-guard','enable')
+    guard_touched=true;PhoneBindings.guard
+   end
    path=resolve_source.call if resolve_source
    if network
    phase('验证源配置与生成 DNS/防火墙')
