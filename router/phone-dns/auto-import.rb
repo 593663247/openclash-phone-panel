@@ -60,7 +60,7 @@ module PhoneImport
    end
    g=mapping.find{|x|x['node']==d['node']}
    unless g
-    id=mapping.map{|x|x['id']}.max.to_i+1;raise '分组超过100' if id>PhoneSettings.port('max_groups')
+    id=PhoneSettings.next_group_id(mapping)
     g={'id'=>id,'node'=>d['node'],'ips'=>[],'dns_port'=>PhoneSettings.port('dns_base')+id,'socks_port'=>PhoneSettings.port('socks_base')+id};mapping<<g
    end
    g['ips']<<d['ip'];devices.reject!{|x|x['ip']==d['ip']};devices<<d.slice('ip','mac','name').merge('group'=>g['id'],'source'=>'auto-import')

@@ -168,12 +168,15 @@ module PhoneBindings
   output
  end
  def self.mapping(document,mapping)
+  valid=mapping.is_a?(Array)&&mapping.all?{|g|g.is_a?(Hash)&&g['id'].is_a?(Integer)&&g['id'].between?(1,PhoneSettings.port('max_groups'))&&g['node'].is_a?(String)}
+  valid&&=mapping.map{|g|g['id']}.uniq.size==mapping.size&&mapping.map{|g|g['node']}.uniq.size==mapping.size
+  mapping=[] unless valid
   output=Marshal.load(Marshal.dump(mapping));output.each{|g|g['ips']=[]}
   document['devices'].each do |d|
    matches=output.select{|g|g['node']==d['node']};raise '同名分组重复，请先核对' if matches.size>1
    group=matches.first
    unless group
-    id=output.map{|g|g['id'].to_i}.max.to_i+1;raise '持久化分组超过上限' if id>PhoneSettings.port('max_groups')
+    id=PhoneSettings.next_group_id(output)
     group=PhoneSettings.group(id,d['node']);output<<group
    end
    group['ips']<<d['ip']

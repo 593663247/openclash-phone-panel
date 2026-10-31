@@ -43,6 +43,10 @@ module PhoneSettings
  end
  def self.[](k);values.fetch(k);end
  def self.port(k);self[k].to_i;end
+ def self.next_group_id(mapping)
+  used=mapping.map{|group|group['id'].to_i}
+  (1..port('max_groups')).find{|id|!used.include?(id)} || raise('分组超过配置上限')
+ end
  def self.phone?(name);name.to_s.start_with?(self['node_prefix']);end
  def self.usable?(ip)
   n=ipnum(ip);a,b=self['lan_cidr'].split('/');net=ipnum(a);size=1<<(32-b.to_i)

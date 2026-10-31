@@ -47,6 +47,8 @@ fixture_directory do |root|
  PhoneBindings.write(document);assert(PhoneBindings.read==document,'new processes can reload the complete desired state')
  guard=PhoneBindings.guard_text(document);assert(guard.include?('hook forward priority -20')&&guard.include?(mac)&&guard.include?(ip))
  assert(!guard.include?('hook input'),'persistent protection must not block local proxy delivery')
+ sparse=PhoneBindings.mapping(document,[PhoneSettings.group(100,b)]);assert(sparse.find{|g|g['node']==a}['id']==1,'sparse old IDs must reuse available slots instead of rejecting a valid config')
+ broken=PhoneBindings.mapping(document,[{'id'=>'bad','node'=>a}]);assert(broken.first['id']==1,'derived group corruption can be rebuilt from validated desired state')
  regenerated=PhoneBindings.mapping(document,[PhoneSettings.group(7,a),PhoneSettings.group(8,b)])
  assert(regenerated.first['id']==7&&PhoneBindings.devices(document,regenerated).first['group']==7,'desired node names cannot depend on old numeric group IDs')
 end

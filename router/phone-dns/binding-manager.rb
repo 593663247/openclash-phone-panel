@@ -33,7 +33,7 @@ module PhoneBindingManager
     next if mapping.any?{|g|g.fetch('ips',[]).include?(ip)}
     group=mapping.find{|g|g['node']==fields[2]}
     unless group
-     id=mapping.map{|g|g['id'].to_i}.max.to_i+1;raise '迁移分组超过上限' if id>PhoneSettings.port('max_groups')
+     id=PhoneSettings.next_group_id(mapping)
      group=PhoneSettings.group(id,fields[2]);mapping<<group
     end
     group['ips']<<ip

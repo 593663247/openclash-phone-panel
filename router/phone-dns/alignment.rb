@@ -57,7 +57,7 @@ module PhoneAlignment
    end
    nodes.select{|name|PhoneSettings.phone?(name)}.uniq.each do |name|
     next if mapping.any?{|g|g['node']==name}
-    id=mapping.map{|g|g['id'].to_i}.max.to_i+1;raise '分组超过上限' if id>PhoneSettings.port('max_groups')
+    id=PhoneSettings.next_group_id(mapping)
     mapping<<PhoneSettings.group(id,name)
    end
    raise '分组标识重复或超过上限' if mapping.size>PhoneSettings.port('max_groups')||mapping.map{|g|g['id']}.uniq.size!=mapping.size

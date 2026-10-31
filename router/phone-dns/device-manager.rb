@@ -78,10 +78,9 @@ def catalog
  mapping=YAML.load_file(BASE+'/mapping.yaml')
  source=PhoneBindings.compose(YAML.load_file(source_path,aliases:true))
  names=(source['proxies']||[]).map{|n|n['name']}.select{|name|PhoneSettings.phone?(name)}.uniq
- id=mapping.map{|g|g['id']}.max.to_i
  names.each do |name|
   next if mapping.any?{|g|g['node']==name}
-  id+=1;raise '手机节点数量超过支持范围' if id>PhoneSettings.port('max_groups')
+  id=PhoneSettings.next_group_id(mapping)
   mapping<<{'id'=>id,'node'=>name,'ips'=>[],'dns_port'=>PhoneSettings.port('dns_base')+id,'socks_port'=>PhoneSettings.port('socks_base')+id}
  end
  mapping
