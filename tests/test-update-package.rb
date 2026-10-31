@@ -69,6 +69,9 @@ fixture_directory do |root|
  PanelStore.write(PhoneRelease.root+'/'+id+'/record.yaml',record.merge('status'=>'installing','boot'=>'previous-boot','protected_before'=>PhoneRelease.hashes([config])))
  assert(PhoneRelease.info['update']['can_upgrade']==false,'unfinished installs must disable another upgrade')
  assert(PhoneRelease.restore(id)['ok']&&PhoneRelease.current=='a'*40&&File.binread(live)=='old code')
+ File.binwrite(PhoneRelease.root+'/'+id+'/record.yaml','broken: [')
+ assert(PhoneRelease.pending_recovery.any?{|r|r['status']=='invalid_record'},'damaged journals must not silently permit another upgrade')
+ assert(PhoneRelease.info['update']['can_upgrade']==false)
 end
 ENV.delete('PHONE_PANEL_TEST_ROOT');ENV.delete('PHONE_PANEL_TEST')
 puts 'Release manifests: completeness, checksums, modes, compatibility, disk-full rollback, unverified services and interrupted-install recovery PASS'

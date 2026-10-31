@@ -66,33 +66,38 @@ module PhoneRelease
  def self.pending_recovery
   return [] unless Dir.exist?(root)
   Dir.glob(root+'/*/record.yaml').filter_map do |file|
-   r=PanelStore.read(file,{})
-   next unless r['id'].to_s.match?(ID)&&%w[prepared installing recovering recovery_required].include?(r['status'])
+   r=PanelStore.read(file,{});id=File.basename(File.dirname(file));next unless id.match?(ID)
+   unless r['id']==id&&%w[prepared installing recovering recovery_required installed restored rolled_back].include?(r['status'])
+    next {'id'=>id,'status'=>'invalid_record','recoverable'=>false}
+   end
+   next unless %w[prepared installing recovering recovery_required].include?(r['status'])
    live=r['pid'].is_a?(Integer)&&r['process_token']&&PhoneBindings.process_token(r['pid'])==r['process_token']&&r['boot']==boot_id
    r.merge('recoverable'=>!live)
   end
  end
- def self.records
+ def self.records(pending:nil)
+  pending||=pending_recovery
   return [] unless Dir.exist?(root)
   Dir.glob(root+'/*/record.yaml').sort.reverse.first(12).filter_map do |path|
    r=PanelStore.read(path,{})
    next unless r['id'].to_s.match?(ID)
-   pending=pending_recovery.find{|item|item['id']==r['id']}
-   r.merge('recoverable'=>pending&&pending['recoverable']).select{|k,_|%w[id from to at status config_backup recoverable files_restored runtime_restored rollback_error].include?(k)}
+   interrupted=pending.find{|item|item['id']==r['id']}
+   r.merge('recoverable'=>interrupted&&interrupted['recoverable']).select{|k,_|%w[id from to at status config_backup recoverable files_restored runtime_restored rollback_error].include?(k)}
   end
  end
  def self.info
+  pending=pending_recovery
   cache=PanelStore.read(PanelStore.state+'/update-cache.yaml',{})
   if cache['current']!=current || Time.now.to_i-cache.fetch('checked_at',0).to_i>3600
    cache['can_upgrade']=false;cache['message']='版本或检查时间已变化，请重新检查更新'
   end
-  unless pending_recovery.empty?
-   cache['can_upgrade']=false;cache['message']='上次程序升级未完成，请先在程序恢复中恢复操作前版本'
+  unless pending.empty?
+   cache['can_upgrade']=false;cache['message']=pending.any?{|r|r['status']=='invalid_record'} ? '程序升级记录损坏，请保留恢复目录并人工核查；已阻止继续升级' : '上次程序升级未完成，请先在程序恢复中恢复操作前版本'
   end
   version_path=PanelStore.path('/usr/share/phone-panel/VERSION')
   version=File.file?(version_path) ? File.read(version_path).strip : nil
   version=nil unless version.to_s.match?(/\A[0-9]+\.[0-9]+\.[0-9]+\z/)
-  {'version'=>version,'current'=>current,'repository'=>REPOSITORY,'update'=>cache,'pending_recovery'=>pending_recovery.map{|r|r.slice('id','status','recoverable')},'published_release'=>PanelStore.read(PanelStore.state+'/published-release.yaml',{}),'releases'=>records}
+  {'version'=>version,'current'=>current,'repository'=>REPOSITORY,'update'=>cache,'pending_recovery'=>pending.map{|r|r.slice('id','status','recoverable')},'published_release'=>PanelStore.read(PanelStore.state+'/published-release.yaml',{}),'releases'=>records(pending:pending)}
  end
  # A bounded TAR reader: no links, devices, traversal, arbitrary archive roots or unbounded expansion.
  def self.unpack_stream(io,destination)
