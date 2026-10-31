@@ -93,7 +93,7 @@ rescue Errno::ENOENT
 end
 
 def plan(req)
- d=valid_input(req)
+ d=valid_input(req);baseline=revision
  raise '存在未保存的 DHCP 配置，请先保存或撤销后重试' unless quiet('uci','changes','dhcp').strip.empty?
  raise '存在未保存的面板设置，请先保存或撤销后重试' unless quiet('uci','changes','phone_panel').strip.empty?
  mapping=catalog;document=PhoneBindings.require_migrated(mapping);PhoneBindings.assert_mapping(document,mapping);g=mapping.find{|x|x['id']==d['group']};raise 'DNS 分组不存在' unless g
@@ -125,7 +125,8 @@ def plan(req)
   seen=a[a.index('lladdr')+1].downcase
   raise '邻居表显示该 IP 被其他 MAC 占用' if seen!=d['mac']
  end
- d.merge('node'=>g['node'],'dns_port'=>g['dns_port'],'adopt_lease'=>adopt,'revision'=>revision,
+ raise '预览期间配置发生变化，请重试' unless revision==baseline
+ d.merge('node'=>g['node'],'dns_port'=>g['dns_port'],'adopt_lease'=>adopt,'revision'=>baseline,
  'warning'=>'可选择全部手机节点，缺少的独立 DNS 分组会在应用时创建；应用会重载防火墙并短暂重启 OpenClash。请确保手机使用固定的 Wi-Fi MAC，地址未被静态配置的离线设备占用。')
 end
 def batch_plan(req)

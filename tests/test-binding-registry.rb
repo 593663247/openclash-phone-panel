@@ -43,6 +43,7 @@ fixture_directory do |root|
  rejects{PhoneBindings.capture(cfg,mapping+[PhoneSettings.group(3,b,[ip])],devices,hosts)}
  rejects{PhoneBindings.validate(document.merge('schema'=>99))}
  File.binwrite(PhoneBindings.path,'broken: [');rejects('corrupt registries must fail closed'){PhoneBindings.read}
+ PhoneBindings.check_network(document,[['0',mac,'192.168.1.193','fixture']], '');rejects{PhoneBindings.check_network(document,[['0','02:11:22:33:44:66',ip,'other']], '')};rejects{PhoneBindings.check_network(document,[],ip+' dev br-lan lladdr 02:11:22:33:44:66 REACHABLE')}
  PhoneBindings.write(document);assert(PhoneBindings.read==document,'new processes can reload the complete desired state')
  guard=PhoneBindings.guard_text(document);assert(guard.include?('hook forward priority -20')&&guard.include?(mac)&&guard.include?(ip))
  assert(!guard.include?('hook input'),'persistent protection must not block local proxy delivery')

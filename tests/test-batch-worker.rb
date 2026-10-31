@@ -63,7 +63,7 @@ fixture_directory do |root|
  {'name'=>'Second','ip'=>'192.168.1.102','mac'=>'02:11:22:33:44:66','group'=>2}]
  [false,:validation,:runtime].each_with_index do |failure,index|
   @commands=[];@uci_hosts={};@fail_once=failure
-  File.delete(PhoneBindings.path) if File.file?(PhoneBindings.path)
+  [PhoneBindings.path,PanelStore.state+'/bindings-last-good.yaml',PhoneBindings.status_file,PanelStore.path('/etc/phone-dns/persistent-guard.yaml')].each{|file|File.delete(file) if File.file?(file)}
   File.write(source_path,{'proxies'=>nodes.map{|name|{'name'=>name}},'rules'=>['MATCH,DIRECT']}.to_yaml)
   File.write(router_path('/etc/config/dhcp'),{}.to_yaml)
   File.write(router_path('/tmp/dhcp.leases'),'')

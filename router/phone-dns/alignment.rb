@@ -29,6 +29,7 @@ module PhoneAlignment
   mapping=PanelStore.read(base+'/mapping.yaml',[])
   if document
    PhoneBindings.check_hosts(document,PhoneBindings.hosts)
+   PhoneBindings.check_network(document,*PhoneBindings.network_state)
    mapping=PhoneBindings.mapping(document,mapping)
   end
   files=(PhoneApply.config_files(source)+[file]).uniq

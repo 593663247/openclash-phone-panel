@@ -8,14 +8,18 @@ module PhoneBindingManager
   Digest::SHA256.hexdigest(PhoneSettings.values.to_yaml.b+files.map{|file|file.b+"\0".b+(File.file?(file) ? File.binread(file) : ''.b)}.join("\0".b))
  end
  def self.plan
+  baseline=revision
   %w[dhcp phone_panel openclash].each{|section|raise "#{section} 有未保存修改" unless PanelStore.run('uci','changes',section).strip.empty?}
   mapping=PanelStore.read(PanelStore.path('/etc/phone-dns/mapping.yaml'),[])
   cfg=PhoneBindings.compose(YAML.safe_load(File.binread(PhoneApply.source),aliases:true))
   previous=PhoneBindings.read
   document=previous || PhoneBindings.capture(cfg,mapping,PanelStore.read(PanelStore.path('/etc/phone-dns/devices.yaml'),[]),PhoneBindings.hosts)
   PhoneBindings.check_hosts(document,PhoneBindings.hosts)
+  leases,neighbors=PhoneBindings.network_state;PhoneBindings.check_network(document,leases,neighbors)
   composed=PhoneBindings.compose(cfg,document)
-  {'ok'=>true,'revision'=>revision,'count'=>document['devices'].size,'devices'=>document['devices'],'document'=>document,'already_initialized'=>!previous.nil?,'warning'=>'确认后保存独立绑定并合并当前配置，备份后重载并验收。仅维护面板拥有的精确规则；实际手机租约及出口另行验证。'}
+  raise '预览期间配置发生变化，请重新检查' unless revision==baseline
+  summary=document['devices'].map{|d|d.merge('current_lease_ip'=>leases.find{|l|l[1].downcase==d['mac']}&.[](2))}
+  {'ok'=>true,'revision'=>baseline,'count'=>document['devices'].size,'devices'=>summary,'document'=>document,'already_initialized'=>!previous.nil?,'warning'=>'确认后保存独立绑定并合并当前配置，备份后重载并验收。仅维护面板拥有的精确规则；租约与固定 IP 不同时需重连 Wi-Fi。实际出口另行验证。'}
  end
  def self.apply(request)
   PhoneApply.transaction(PhoneApply.source,expected_revision:request['revision'],revision:method(:revision)) do

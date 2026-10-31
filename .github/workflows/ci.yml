@@ -36,6 +36,12 @@ jobs:
           luac5.1 -p router/phone-dns/probe-udp.lua
       - name: Independent guard in an isolated network namespace
         run: sudo env PHONE_PANEL_NFT_TEST=1 unshare --net ruby tests/guard-netns.rb
+      - name: Generated DNS configurations with pinned sing-box
+        run: |
+          curl -fL --proto '=https' --proto-redir '=https' --max-time 90 -o "$RUNNER_TEMP/sing-box.tar.gz" https://github.com/SagerNet/sing-box/releases/download/v1.12.0/sing-box-1.12.0-linux-amd64.tar.gz
+          echo "f59b1253ae0143997cb46915af30d14a33431dcbd7e39edacfcde8d73050faaf  $RUNNER_TEMP/sing-box.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/sing-box.tar.gz" -C "$RUNNER_TEMP"
+          ruby tests/check-dns-config.rb "$RUNNER_TEMP/sing-box-1.12.0-linux-amd64/sing-box"
       - name: Publication privacy gate
         run: python3 scripts/privacy_check.py
       - name: Isolated maintenance backup and restore

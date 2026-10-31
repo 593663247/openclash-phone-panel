@@ -74,6 +74,7 @@ module PhoneApply
   if document
    PhoneBindings.assert_mapping(document,mapping)
    PhoneBindings.check_hosts(document,PhoneBindings.hosts)
+   PhoneBindings.check_network(document,*PhoneBindings.network_state)
    document['devices'].each{|d|raise "#{d['ip']} 持久化绑定未加载" unless [source,runtime].all?{|c|c.fetch('rules',[]).include?(PhoneBindings.rule(d))}}
    guard_state=command('nft','list','chain','inet','phone_panel_persistent','guard')
    raise '独立持久化防直连保护未通过验收' unless document['devices'].all?{|d|guard_state.include?(d['mac'])&&guard_state.include?(d['ip'])} && (document['devices'].empty? || guard_state.include?('drop'))
@@ -109,6 +110,7 @@ module PhoneApply
  def self.allowed_restore?(file)
   return false unless file.is_a?(String) && !file.include?('..') && !file.include?("\0")
   return true if %w[/etc/config/dhcp /etc/config/phone_panel /etc/config/openclash /etc/nftables.d/90-phone-fixed-egress.nft /etc/phone-dns/config.json].include?(file)
+  return true if %w[/etc/phone-dns/state/bindings-last-good.yaml /etc/phone-dns/state/persistence-status.yaml].include?(file)
   return true if file.match?(%r{\A/etc/phone-dns/[a-z0-9-]+\.(yaml|conf)\z})
   %w[/etc/openclash/config/ /etc/openclash/].any?{|prefix|file.start_with?(prefix) && File.basename(file)==file.delete_prefix(prefix) && file.end_with?('.yaml')}
  end
@@ -124,7 +126,7 @@ module PhoneApply
   manifest=PanelStore.read(directory+'/manifest.json',{})
   raise '独立绑定快照缺少完整性校验文件' if manifest['/etc/phone-dns/managed-bindings.yaml']&&!File.file?(directory+'/manifest.sha256')
   raise '备份包含不允许的目标路径' if manifest.empty?||manifest.size>512||!manifest.keys.all?{|p|allowed_restore?(p)}
-  if File.exist?(PhoneBindings.path)
+  if PhoneBindings.has_policy?
    raise '旧备份不包含独立绑定库，不能覆盖已迁移设备；请选择迁移后的完整快照' unless manifest['/etc/phone-dns/managed-bindings.yaml']
   end
   decoded=manifest.to_h do |file,data|
@@ -185,7 +187,8 @@ module PhoneApply
   elsif expected_revision
    raise '缺少配置版本检查'
   end
-  files=(config_files(path)+extra_files).uniq;dir,snapshots=snapshot(files);@log=dir+'/commands.log'
+  metadata=[PanelStore.state+'/bindings-last-good.yaml',PhoneBindings.status_file]
+  files=(config_files(path)+metadata+extra_files).uniq;dir,snapshots=snapshot(files);@log=dir+'/commands.log'
   phase('备份已完成，更新配置',{'backup'=>dir})
   guard_touched=false
   begin

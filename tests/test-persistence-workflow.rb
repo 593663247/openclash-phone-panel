@@ -67,7 +67,7 @@ fixture_directory do |root|
  preview=PhoneBindingManager.plan;result=PhoneBindingManager.apply({'revision'=>preview['revision']})
  assert(result['ok'],'migration must persist and validate the running configuration: '+result.to_s)
  assert(PhoneBindings.info.dig('status','state')=='verified')
- saved_good=PhoneBindings.info['last_good']['backup']
+ saved_good=PhoneBindings.info['last_good']['backup'];File.delete(PhoneBindings.path);assert(PhoneBindings.info['blocked'],'missing registries must not silently re-import a replaced source');assert(PhoneApply.restore(saved_good)['ok'],'last verified state must repair a missing registry')
  old_source_method=PhoneApply.method(:source)
  PhoneApply.define_singleton_method(:source){|**options|raise 'corrupt config selection' if File.binread(selected)=='broken';old_source_method.call(**options)}
  File.binwrite(selected,'broken');assert(PhoneApply.restore(saved_good)['ok'],'a complete snapshot must recover invalid configuration selection')

@@ -32,11 +32,22 @@ module PhoneBindings
   document
  end
  def self.read
-  return nil unless File.exist?(path)
+  unless File.exist?(path)
+   raise '独立绑定库丢失，请恢复上次验收快照；未退回旧导入模式' if has_policy?
+   return nil
+  end
   raise '设备绑定库不安全或体积异常' if File.symlink?(path) || !File.file?(path) || File.size(path)>2*1024*1024
   validate(YAML.safe_load(File.binread(path),aliases:false))
  rescue Psych::Exception
   raise '设备绑定库损坏，已停止合并；请从备份恢复'
+ end
+ def self.has_policy?
+  return true if File.exist?(path)||File.exist?(PanelStore.state+'/bindings-last-good.yaml')
+  file=PanelStore.path('/etc/phone-dns/persistent-guard.yaml');return false unless File.file?(file)
+  return true if File.symlink?(file)||File.size(file)>256*1024
+  record=YAML.safe_load(File.binread(file),aliases:false)
+  !record.is_a?(Hash)||!record['devices'].is_a?(Array)||!record['devices'].empty?
+ rescue;true
  end
  def self.check_hosts(document,hosts)
   document['devices'].each do |d|
@@ -55,6 +66,21 @@ module PhoneBindings
    end
   end
   result
+ end
+ def self.network_state
+  leases=File.file?(PanelStore.path('/tmp/dhcp.leases')) ? File.readlines(PanelStore.path('/tmp/dhcp.leases')) : []
+  [PhoneSettings.active_leases(leases),PanelStore.run('ip','neigh','show','dev',PhoneSettings['bridge'])]
+ end
+ def self.check_network(document,leases,neighbors)
+  document['devices'].each do |d|
+   raise "#{d['ip']} 仍租给其他 MAC，请先释放地址冲突" if leases.any?{|l|l[2]==d['ip']&&l[1].downcase!=d['mac']}
+   neighbors.each_line do |line|
+    fields=line.split;next unless fields.first==d['ip']&&fields.include?('lladdr')
+    seen=fields[fields.index('lladdr')+1].to_s.downcase
+    raise "#{d['ip']} 在邻居表中被其他 MAC 占用" unless seen==d['mac']
+   end
+  end
+  true
  end
  def self.guard_text(document,exists:false)
   validate(document);guard_program(document['devices'],PhoneSettings['bridge'],exists:exists)

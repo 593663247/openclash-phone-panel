@@ -296,9 +296,10 @@ module PhoneRelease
  def self.restore(id)
   raise 'Invalid recovery ID' unless id.to_s.match?(ID)
   record=PanelStore.read(root+'/'+id+'/record.yaml',{})
-  if PhoneBindings.read
+  if PhoneBindings.has_policy?
    entries=PanelStore.read(root+'/'+id+'/manifest.yaml',[])
-   raise '此程序快照早于独立绑定格式，不允许降级；请保留当前保护并恢复兼容快照' unless entries.any?{|e|e['destination']=='/etc/phone-dns/binding-registry.rb'&&e['present']}
+   compatible=%w[/etc/phone-dns/binding-registry.rb /etc/init.d/phone-panel-guard].all?{|path|entries.any?{|e|e['destination']==path&&e['present']}}
+   raise '此程序快照早于独立绑定格式，不允许降级；请保留当前保护并恢复兼容快照' unless compatible
   end
   raise 'Recovery record is unavailable' unless record['status']=='installed' && record['from'].to_s.match?(SHA)
   PanelStore.with_lock(PanelStore.path('/var/lock/phone-panel.lock'),true) do
