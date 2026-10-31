@@ -1,5 +1,14 @@
 # 更新日志 / Changelog
 
+## Unreleased — maintenance checks and UI polish
+
+- Gate update discovery and installation on conservative disk-space, command dependency, Ruby version, core, pending UCI edit and operation-lock checks.
+- Add backup size/time inventory and previewed reversible recycling of standalone transaction backups older than seven days, keeping at least three recent snapshots. Recycling does not free disk space or permanently delete data.
+- Mark old diagnostic measurements stale after max(15 minutes, twice the probe interval), removing primary green success emphasis.
+- Polish scoped cards, status labels, spacing, keyboard focus and narrow-screen form layout.
+- Add backup retention/path/revision/recycling tests and update-preflight failure regression coverage.
+- Validation: frontend tests, isolated router backend tests and firewall checks passed. Final rendered visual QA remains blocked by local browser permissions. Existing v1.0.0 tag/assets remain unchanged.
+
 ## [1.0.0] — 2026-10-31
 
 首个正式编号版本。Git tag: `v1.0.0`；opkg 包版本: `1.0.0-1`。

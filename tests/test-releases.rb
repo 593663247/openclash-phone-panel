@@ -51,7 +51,10 @@ fixture_directory do |root|
   return {'status'=>@test_comparison||'ahead'} if path.start_with?('/compare/')
   {'workflow_runs'=>[{'path'=>'.github/workflows/ci.yml','head_sha'=>'b'*40,'status'=>'completed','conclusion'=>@test_ci||'success','run_number'=>1}]}
  end
+ PhoneMaintenanceHealth.define_singleton_method(:preflight){{'ok'=>!@fail_preflight,'checks'=>[]}}
  assert(PhoneRelease.check['can_upgrade'])
+ PhoneMaintenanceHealth.instance_variable_set(:@fail_preflight,true);assert(!PhoneRelease.check['can_upgrade'],'failed local preflight blocks CI-passing update')
+ PhoneMaintenanceHealth.instance_variable_set(:@fail_preflight,false)
  PhoneRelease.instance_variable_set(:@test_ci,'failure');assert(!PhoneRelease.check['can_upgrade'],'CI failure must block installation')
  PhoneRelease.instance_variable_set(:@test_ci,'success');PhoneRelease.instance_variable_set(:@test_comparison,'diverged')
  assert(!PhoneRelease.check['can_upgrade'],'divergent history must not silently overwrite')

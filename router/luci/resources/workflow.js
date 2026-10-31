@@ -41,5 +41,13 @@
   }catch(e){$('operation-note').textContent='暂时读不到任务：'+e.message+'。任务在后台继续，刷新后可恢复查询。'}finally{refreshing=false}
  }
  function watch(id){busy=true;focused=id;root.sessionStorage.setItem('phone-panel-current-operation',id);$('operation-note').textContent='后台任务 '+id+' 已提交，可刷新页面；任务完成前请勿重复操作。';poll()}
+ let backupPlan=null;
+ function backupMessage(value){$('backup-result').hidden=false;$('backup-result').textContent=value}
+ async function backupInventory(){const d=await api.get('maintenance_health');$('backup-total').textContent=d.count+' 条备份 · '+(d.total_bytes/1048576).toFixed(1)+' MiB · 回收目录 '+((d.recycle_bytes||0)/1048576).toFixed(1)+' MiB';$('backup-items').innerHTML='<table><thead><tr><th>选择</th><th>备份</th><th>大小</th><th>时间</th></tr></thead><tbody>'+d.items.map(r=>'<tr><td><input type="checkbox" data-backup="'+api.esc(r.id)+'" '+(r.recyclable?'':'disabled')+' aria-label="选择备份 '+api.esc(r.id)+'"></td><td>'+api.esc(r.id)+'</td><td>'+api.esc((r.bytes/1048576).toFixed(2))+' MiB</td><td>'+api.esc(new Date(r.at*1000).toLocaleString())+'</td></tr>').join('')+'</tbody></table>';backupPlan=null;$('backup-recycle').hidden=true}
+ if($('backup-refresh')){ $('backup-refresh').onclick=()=>backupInventory().catch(e=>backupMessage(e.message));
+ $('backup-items').onchange=()=>{backupPlan=null;$('backup-recycle').hidden=true};
+ $('backup-preview').onclick=async()=>{if(busy)return;try{const ids=Array.from($('backup-items').querySelectorAll('[data-backup]:checked')).map(e=>e.dataset.backup);const d=await api.post('backup_preview',{ids});backupPlan={ids,revision:d.revision};backupMessage(d.items.map(r=>r.id).join('\n')+'\n'+d.warning);$('backup-recycle').hidden=false}catch(e){backupMessage(e.message)}};
+ $('backup-recycle').onclick=async()=>{if(!backupPlan||busy||!root.confirm('确认将预览的旧备份移入回收目录？不永久删除，也不会释放磁盘空间。'))return;try{const d=await api.post('backup_recycle',backupPlan);backupMessage(d.message+'\n'+d.recycle);await backupInventory()}catch(e){backupMessage(e.message)}};
+ backupInventory().catch(e=>backupMessage(e.message));}
  $('operation-refresh').onclick=poll;poll();root.setInterval(poll,5000);return {update,watch,busy:()=>busy,poll};
 }root.PhonePanelWorkflow={attach};})(typeof window==='undefined'?globalThis:window);

@@ -55,6 +55,8 @@ function attach(api){
     '<div class="pf-spark" role="img" aria-label="最近链路检测结果">'+(h.history||[]).slice(-24).map(r=>'<span class="'+(r.dns_ok&&r.exit_ok?'pf-good':'pf-bad')+'" title="'+esc(date(r.at)+' · DNS '+r.dns_ms+'ms / 出口 '+r.exit_ms+'ms')+'"></span>').join('')+'</div>'+
     '<small>'+esc(last?date(last.at)+' · '+(categories[last.category]||'检测结果待确认'):'后台监测启动后会分批检测，不自动切换节点。')+'</small>'+
     (h.exit_ip?'<div class="'+(h.exit_changed?'pf-danger':'')+'">出口 '+esc(h.exit_ip)+(h.exit_changed?' · 与确认基线不同':'')+'</div>':'');
+   const ttl=Math.max(900,Number(snapshot.settings&&snapshot.settings.probe_interval||900)*2);
+   if(!last||Date.now()/1000-last.at>ttl){const note=document.createElement('span');note.className='stale-note';note.textContent=last?'检测结果已过期，请重新检测；历史成功不代表当前可用':'尚未实测，请点击检测';block.appendChild(note);card.classList.add('pf-stale');const main=card.querySelector('.probe');if(main)main.classList.remove('ok')}else card.classList.remove('pf-stale');
    block.querySelector('button').onclick=()=>diagnose(g.id);
    card.querySelector('.body').appendChild(block);
   });
@@ -135,6 +137,7 @@ function attach(api){
   text('pf-version',(data.version?'v'+data.version+' · ':'')+(data.current?data.current.slice(0,12):'版本标记未设置'));
   text('pf-update-message',up.message||'点击检查 GitHub 更新；不会自动安装或改动网络。');
   $('pf-upgrade').disabled=versionBusy||!up.can_upgrade;
+  const pre=up.preflight; $('upgrade-preflight').innerHTML=pre?'<p>升级预检查 · '+esc(date(pre.at))+'</p>'+pre.checks.map(c=>'<span class="console-check '+(c.ok?'':'bad')+'">'+esc((c.ok?'✓ ':'! ')+c.name+' · '+c.detail)+'</span>').join(''):'<p>检查更新时同步执行升级预检查；应用前再次检查。</p>';
   $('pf-restore').disabled=versionBusy||!(data.releases||[]).some(r=>r.status==='installed'&&/^[a-f0-9]{40}$/.test(r.from||''));
   const selected=$('pf-release').value;
   $('pf-release').innerHTML=(data.releases||[]).filter(r=>r.status==='installed'&&/^[a-f0-9]{40}$/.test(r.from||'')).map(r=>'<option value="'+esc(r.id)+'">'+esc(date(r.at)+' → '+r.from.slice(0,12))+'</option>').join('');

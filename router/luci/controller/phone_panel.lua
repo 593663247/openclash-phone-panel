@@ -26,6 +26,9 @@ function index()
  entry({'admin','services','phone_panel','operation_restore'},post('operation_restore')).leaf=true
  entry({'admin','services','phone_panel','operations'},call('operations')).leaf=true
  entry({'admin','services','phone_panel','workflow_assets'},call('workflow_assets')).leaf=true
+ entry({'admin','services','phone_panel','maintenance_health'},call('maintenance_health')).leaf=true
+ entry({'admin','services','phone_panel','backup_preview'},post('backup_preview')).leaf=true
+ entry({'admin','services','phone_panel','backup_recycle'},post('backup_recycle')).leaf=true
  p.dependent=true
  p.acl_depends={'luci-app-openclash'}
  entry({'admin','services','phone_panel','status'},call('status')).leaf=true
@@ -73,7 +76,8 @@ local function device_request(mode)
  local feature_modes={ack=true,check_update=true,upgrade=true,restore_release=true}
  local async_modes={['edit-apply']='device_edit',['node-apply']='node_change',['node-test']='node_test',restore='restore',apply='device_add',['batch-apply']='device_batch'}
  local node_modes={['node-preview']=true,['node-apply']=true}
- local backend=async_modes[mode] and 'operations.rb' or node_modes[mode] and 'node-manager.rb' or feature_modes[mode] and 'feature-api.rb' or ((mode=='edit-preview' or mode=='edit-apply') and 'device-operation.rb' or 'device-manager.rb')
+ local backup_modes={['cleanup-preview']=true,cleanup=true}
+ local backend=backup_modes[mode] and 'maintenance-health.rb' or async_modes[mode] and 'operations.rb' or node_modes[mode] and 'node-manager.rb' or feature_modes[mode] and 'feature-api.rb' or ((mode=='edit-preview' or mode=='edit-apply') and 'device-operation.rb' or 'device-manager.rb')
  local commandmode=async_modes[mode] or mode=='node-preview' and 'preview' or mode=='node-apply' and 'apply' or mode=='edit-preview' and 'preview' or mode=='edit-apply' and 'apply' or mode
  local output=require('luci.sys').exec('/usr/bin/ruby /etc/phone-dns/'..backend..' '..commandmode..' '..require('luci.util').shellquote(path)..' 2>/dev/null')
  require('nixio.fs').remove(path)
@@ -157,3 +161,11 @@ function workflow_assets()
 end
 
 function operation_restore() device_request('restore') end
+
+function maintenance_health()
+ local h=require('luci.http');h.header('Cache-Control','no-store');h.prepare_content('application/json')
+ h.write(require('luci.sys').exec('/usr/bin/ruby /etc/phone-dns/maintenance-health.rb inventory 2>/dev/null'))
+end
+
+function backup_preview() device_request('cleanup-preview') end
+function backup_recycle() device_request('cleanup') end

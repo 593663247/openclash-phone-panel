@@ -1,4 +1,5 @@
 require_relative 'panel-store'
+require_relative 'maintenance-health'
 
 module PhoneRelease
  REPOSITORY='593663247/openclash-phone-panel'
@@ -29,6 +30,9 @@ module PhoneRelease
    'ci_ok'=>!!ci,'ci_url'=>workflow && workflow['html_url'],'comparison'=>comparison,
    'can_upgrade'=>installed.match?(SHA) && comparison=='ahead' && ci==true,
    'message'=>installed==latest ? '已是 GitHub main 当前版本' : (comparison!='ahead' ? '不是可快进版本，请人工核对，未允许自动覆盖' : (ci ? '发现已通过 CI 的更新' : '新版本 CI 尚未通过，暂不可升级'))}
+  data['preflight']=PhoneMaintenanceHealth.preflight
+  data['can_upgrade']&&=data['preflight']['ok']
+  data['message']='升级预检查未通过，请处理下方项目' unless data['preflight']['ok']
   PanelStore.write(PanelStore.state+'/update-cache.yaml',data)
   data
  end
@@ -262,6 +266,7 @@ module PhoneRelease
  end
  def self.upgrade(target)
   raise 'Invalid target commit' unless target.to_s.match?(SHA)
+  preflight=PhoneMaintenanceHealth.preflight;raise '升级预检查未通过' unless preflight['ok']
   checked=check
   raise 'Update changed or CI is not ready; check again' unless checked['can_upgrade'] && checked['latest']==target
   temp=PanelStore.ram+'/release-'+target;PanelStore.mkdir(temp)
