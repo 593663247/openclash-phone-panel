@@ -100,7 +100,7 @@ Windows：右键 ZIP → 全部解压。把里面的 {ipkname} 上传到路由�
 只检查语法不代表真实出口/UDP可用；真实新节点仍需绑定后检测。
 
 卸载保护：普通移除会被阻止，避免突然失去防直连保护；请先按源码 docs/MAINTENANCE.md 的停用/恢复流程处理。
-本安装包只完成结构、脚本和隔离安装验证，未在另一台真实路由器完整安装验收。
+本安装包通过结构、校验和、脚本语法及自动化回归验证，尚未完成路由器实机安装验收。
 
 GitHub: https://github.com/593663247/openclash-phone-panel
 Source commit: {commit}
@@ -115,7 +115,7 @@ Installation does not activate routing. Configure subnet, router IP and bridge u
 Marked OpenClash hooks are integrated automatically; enable the corresponding custom hooks in OpenClash. Existing manual deployments or ambiguous legacy hooks are rejected.
 SOCKS5 node creation is under Maintenance. Real provider connectivity and UDP require validation after binding.
 Normal removal is blocked for safety: follow docs/MAINTENANCE.md to disable/recover first.
-Package structure, scripts and isolated installation are verified; installation on another physical router remains unverified.
+Package structure, checksums, script syntax and automated regressions are verified; physical router installation remains unverified.
 
 Source: https://github.com/593663247/openclash-phone-panel
 Commit: {commit}
