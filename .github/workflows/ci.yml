@@ -36,3 +36,6 @@ jobs:
         run: python3 scripts/privacy_check.py
       - name: Isolated maintenance backup and restore
         run: python3 tests/test-maintenance.py
+
+      - name: Windows ZIP and opkg payload validation
+        run: python3 tests/test-package.py
