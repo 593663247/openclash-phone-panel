@@ -27,6 +27,19 @@ assert(!redacted.to_s.include?('fixture-secret-key'),'catalog must never leak no
 PhoneNodeRegistry.merge({'proxies'=>[]},[node]).tap{|c|assert(c['proxies'].first==node)}
 rejects{PhoneNodeRegistry.merge({'proxies'=>[node.merge('server'=>'192.0.2.99')]},[node])}
 puts 'SOCKS5 CRUD validation, references, credential retention/redaction and registry merge PASS'
-# Keep the admin's explicit UDP setting when generated listeners are appended.
-source=File.read(File.expand_path('../router/phone-dns/add-listeners.rb',__dir__))
-raise 'Explicit UDP choice would be overwritten' unless source.include?("!n.key?('udp')")
+# Exercise the actual generator rather than matching its local variable names.
+require_relative '../router/phone-dns/add-listeners'
+fixture_directory do |root|
+ ENV['PHONE_PANEL_TEST']='1';ENV['PHONE_PANEL_TEST_ROOT']=root
+ PanelStore.mkdir(PanelStore.path('/etc/phone-dns'))
+ PanelStore.write(PanelStore.path('/etc/phone-dns/listeners.yaml'),[])
+ PanelStore.write(PanelStore.path('/etc/phone-dns/mapping.yaml'),[])
+ file=root+'/runtime.yaml'
+ sample={'proxies'=>[{'name'=>PhoneSettings['node_prefix']+'explicit','type'=>'socks5','udp'=>false},{'name'=>PhoneSettings['node_prefix']+'default','type'=>'socks5'}]}
+ PanelStore.atomic(file,sample.to_yaml);PhoneListeners.apply(file)
+ result=YAML.safe_load(File.binread(file))
+ assert(result['proxies'][0]['udp']==false,'explicit UDP choice must survive')
+ assert(result['proxies'][1]['udp']==true,'missing phone UDP choice should receive its default')
+ assert(result.dig('sniffer','enable')==false,'adding exclusions must not enable sniffing')
+end
+ENV.delete('PHONE_PANEL_TEST_ROOT');ENV.delete('PHONE_PANEL_TEST')
