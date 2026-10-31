@@ -90,17 +90,19 @@ module PhoneApply
   snapshots=files.to_h{|p|[p,File.file?(p) ? File.binread(p) : nil]}
   manifest=snapshots.to_h{|p,v|[ENV['PHONE_PANEL_TEST_ROOT'] ? p.delete_prefix(ENV['PHONE_PANEL_TEST_ROOT']) : p,v && [v].pack('m0')]}
   PanelStore.write(dir+'/manifest.json',manifest)
+  PanelStore.atomic(dir+'/manifest.sha256',Digest::SHA256.file(dir+'/manifest.json').hexdigest+"\n")
   [dir,snapshots]
  end
  def self.checkpoint(source)
   files=config_files(source);fingerprint=Digest::SHA256.hexdigest(files.sort.map{|p|p.b+"\0".b+(File.file?(p) ? File.binread(p) : ''.b)}.join("\0".b))
   old=PanelStore.read(PanelStore.state+'/bindings-last-good.yaml',{})
-  if old['fingerprint']==fingerprint && File.file?(self.path(old.fetch('backup',''))+'/manifest.json')
+  old_manifest=self.path(old.fetch('backup',''))+'/manifest.json'
+  if old['fingerprint']==fingerprint && File.file?(old_manifest) && old['manifest_sha256']==Digest::SHA256.file(old_manifest).hexdigest
    backup=old['backup']
   else
    backup,_=snapshot(files)
    backup=backup.sub(ENV['PHONE_PANEL_TEST_ROOT'].to_s,'') if ENV['PHONE_PANEL_TEST_ROOT']
-   PanelStore.write(PanelStore.state+'/bindings-last-good.yaml',{'backup'=>backup,'fingerprint'=>fingerprint,'source'=>source,'at'=>Time.now.to_i})
+   PanelStore.write(PanelStore.state+'/bindings-last-good.yaml',{'backup'=>backup,'fingerprint'=>fingerprint,'manifest_sha256'=>Digest::SHA256.file(self.path(backup)+'/manifest.json').hexdigest,'source'=>source,'at'=>Time.now.to_i})
   end
   PhoneBindings.status('verified',{'message'=>'配置与运行态验收通过；手机租约及实际业务另行验证','backup'=>backup})
  end
@@ -114,7 +116,13 @@ module PhoneApply
   raise '恢复路径无效' unless backup.is_a?(String)&&backup.match?(%r{\A/root/phone-panel-transactions/\d{23}-\d+\z})
   directory=self.path(backup);raise '恢复目录不安全' if File.symlink?(directory)||File.realpath(directory)!=File.expand_path(directory)
   raise '备份清单体积异常' if File.size(directory+'/manifest.json')>128*1024*1024
+  raise '备份清单路径不安全' if File.symlink?(directory+'/manifest.json')||File.symlink?(directory+'/manifest.sha256')
+  if File.file?(directory+'/manifest.sha256')
+   expected=File.read(directory+'/manifest.sha256').strip
+   raise '备份完整性校验失败，未修改当前配置' unless expected.match?(/\A[a-f0-9]{64}\z/)&&Digest::SHA256.file(directory+'/manifest.json').hexdigest==expected
+  end
   manifest=PanelStore.read(directory+'/manifest.json',{})
+  raise '独立绑定快照缺少完整性校验文件' if manifest['/etc/phone-dns/managed-bindings.yaml']&&!File.file?(directory+'/manifest.sha256')
   raise '备份包含不允许的目标路径' if manifest.empty?||manifest.size>512||!manifest.keys.all?{|p|allowed_restore?(p)}
   if File.exist?(PhoneBindings.path)
    raise '旧备份不包含独立绑定库，不能覆盖已迁移设备；请选择迁移后的完整快照' unless manifest['/etc/phone-dns/managed-bindings.yaml']
@@ -158,6 +166,10 @@ module PhoneApply
   original_path=path
   lock=File.open(self.path('/var/lock/phone-panel.lock'),'w',0600)
   raise '另一个配置任务正在运行' unless lock.flock(File::LOCK_EX|File::LOCK_NB)
+  previous_token=ENV['PHONE_PANEL_APPLY_TOKEN'];apply_token=Random.bytes(16).unpack1('H*')
+  ENV['PHONE_PANEL_APPLY_TOKEN']=apply_token
+  owner_file=self.path('/var/lock/phone-panel-owner.json')
+  PanelStore.write(owner_file,{'token'=>apply_token,'pid'=>Process.pid,'process_token'=>PhoneBindings.process_token(Process.pid)})
   phase('检查配置版本与未保存修改')
   %w[dhcp phone_panel openclash].each do |section|
    if recovery
@@ -210,6 +222,10 @@ module PhoneApply
    {'error'=>failure.message,'files_restored'=>file_ok,'runtime_restored'=>runtime_ok,'rolled_back'=>file_ok&&runtime_ok,'recovery_required'=>!(file_ok&&runtime_ok),'rollback_error'=>restore_error,'backup'=>dir,'diagnostic_log'=>@log}
   end
  ensure
+  if defined?(apply_token)&&apply_token
+   previous_token ? ENV['PHONE_PANEL_APPLY_TOKEN']=previous_token : ENV.delete('PHONE_PANEL_APPLY_TOKEN')
+   File.delete(owner_file) if owner_file&&File.file?(owner_file)&&PanelStore.read(owner_file,{})['token']==apply_token
+  end
   @log=nil;lock.close if lock
  end
 end

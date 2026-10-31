@@ -67,6 +67,10 @@ fixture_directory do |root|
  preview=PhoneBindingManager.plan;result=PhoneBindingManager.apply({'revision'=>preview['revision']})
  assert(result['ok'],'migration must persist and validate the running configuration: '+result.to_s)
  assert(PhoneBindings.info.dig('status','state')=='verified')
+ saved_good=PhoneBindings.info['last_good']['backup']
+ old_source_method=PhoneApply.method(:source)
+ PhoneApply.define_singleton_method(:source){|**options|raise 'corrupt config selection' if File.binread(selected)=='broken';old_source_method.call(**options)}
+ File.binwrite(selected,'broken');assert(PhoneApply.restore(saved_good)['ok'],'a complete snapshot must recover invalid configuration selection')
  assert(PhoneBindings.read['devices'].first['mac']==mac)
  base={'proxies'=>[],'rules'=>['DOMAIN,example.net,DIRECT','MATCH,DIRECT'],'sniffer'=>{}}
  File.binwrite(source,base.to_yaml);File.binwrite(runtime,base.to_yaml)
@@ -75,6 +79,7 @@ fixture_directory do |root|
  assert(YAML.safe_load(File.binread(source))['rules'].first=="SRC-IP-CIDR,#{ip}/32,#{a}",'subscription replacement must repair the source too')
  assert(PanelStore.read(PanelStore.path('/etc/phone-dns/devices.yaml'),[]).first['group']==7,'group rebuild must not change desired node identity')
  good=PhoneBindings.info['last_good']['backup'];assert(good,'verified complete snapshot must be available')
+ held=File.open(PanelStore.path('/var/lock/phone-panel.lock'),'a');held.flock(File::LOCK_EX);begin;rejects('external hooks cannot race a panel transaction'){PhoneAlignment.run(runtime)};ensure;held.close;end
  before_guard=PhoneBindings.guard_text(guarded);before_nft=File.binread(PanelStore.path('/etc/nftables.d/90-phone-fixed-egress.nft'))
  File.binwrite(source_b,base.to_yaml);File.binwrite(runtime_b,base.to_yaml);File.binwrite(selected,source_b);PhoneNodeRegistry.write([])
  rejects('missing subscription node must block the switch'){PhoneAlignment.run(runtime_b)}

@@ -121,6 +121,8 @@ module PhoneBindings
   document
  end
  def self.compose(cfg,document=read)
+  raise 'OpenClash 配置必须是对象' unless cfg.is_a?(Hash)
+  raise 'OpenClash 节点列表格式无效' unless cfg['proxies'].nil?||(cfg['proxies'].is_a?(Array)&&cfg['proxies'].all?{|n|n.is_a?(Hash)&&n['name'].is_a?(String)})
   output=Marshal.load(Marshal.dump(cfg));PhoneNodeRegistry.merge(output)
   return output unless document
   validate(document);rules=output['rules']||[]
@@ -161,6 +163,14 @@ module PhoneBindings
  def self.process_token(pid)
   File.read("/proc/#{pid}/stat").split(')',2).last.split[19]
  rescue;nil
+ end
+ def self.parent_apply?
+  token=ENV['PHONE_PANEL_APPLY_TOKEN'];return false unless token
+  owner=PanelStore.read(PanelStore.path('/var/lock/phone-panel-owner.json'),{})
+  return false unless owner['token']==token&&owner['pid'].is_a?(Integer)&&owner['pid']>1
+  Process.kill(0,owner['pid'])
+  owner['process_token']==process_token(owner['pid'])
+ rescue;false
  end
  def self.status(state,extra={})
   extra=extra.merge('process_token'=>process_token(Process.pid)) if state=='generating'

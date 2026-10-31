@@ -11,6 +11,10 @@ module PhoneAlignment
  end
  def self.run(file,live:false)
   base=PanelStore.path('/etc/phone-dns');PanelStore.mkdir(PanelStore.path('/var/lock'))
+  unless PhoneBindings.parent_apply?
+   global=File.open(PanelStore.path('/var/lock/phone-panel.lock'),'a',0600)
+   raise '另一个配置任务正在应用，外部合并已阻止；请稍后重试' unless global.flock(File::LOCK_EX|File::LOCK_NB)
+  end
   lock=File.open(PanelStore.path('/var/lock/phone-dns-align.lock'),'a',0600);lock.flock(File::LOCK_EX)
   source=PhoneApply.source
   allowed=[source,PanelStore.path('/etc/openclash/'+File.basename(source))]
@@ -89,7 +93,7 @@ module PhoneAlignment
     IO.popen(['nft','-f','-'],'w'){|io|io.write(text)};raise 'DNS 接管规则应用失败' unless $?.success?
     command('/etc/init.d/phone-dns','restart');command('/etc/init.d/dnsmasq','reload')
     command('nft','flush','flowtable','inet','fw4','ft') if PanelStore.capture('nft','list','flowtable','inet','fw4','ft')[1]==0
-    PhoneApply.verify(source);PhoneApply.checkpoint(source) if document
+    PhoneApply.wait_ready;PhoneApply.verify(source);PhoneApply.checkpoint(source) if document
    end
    {'ok'=>true,'count'=>ips.size}
   rescue=>failure
@@ -106,5 +110,6 @@ module PhoneAlignment
   raise
  ensure
   lock.close if lock
+  global.close if global
  end
 end
