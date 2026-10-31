@@ -9,5 +9,11 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),{JSDOM}=require
  records=[{id:'test',action:'device_edit',status:'running',stage:'验证配置'}];await flow.poll();assert(flow.busy());assert.match($('operation-list').textContent,/验证配置/);
  w.sessionStorage.setItem('phone-panel-current-operation','test');records=[{id:'test',action:'device_edit',status:'done',stage:'完成',message:'success'}];await flow.poll();assert(!flow.busy());assert.equal(refreshes,1);assert.equal(w.sessionStorage.getItem('phone-panel-current-operation'),null);
  records=[{id:'other',action:'device_edit',status:'interrupted',recovery_required:true,stage:'执行中断',message:'inspect backups'}];await flow.poll();assert.match($('operation-list').textContent,/不会自动重试/);
+ records=Array.from({length:8},(_,i)=>({id:'history-'+i,action:'node_test',subject:'fixture node',status:i===0?'failed':'done',at:100+i,result:{dns_ok:true,exit_ok:true,udp:{udp_ok:false}}}));
+ $('operation-filter').value='all';$('operation-filter').onchange();await flow.poll();
+ assert.equal($('operation-list').querySelectorAll('details').length,5);assert.match($('operation-list').textContent,/节点检测/);assert.match($('operation-list').textContent,/UDP 失败/);
+ $('operation-more').onclick();assert.equal($('operation-list').querySelectorAll('details').length,8);
+ let expanded=$('operation-list').querySelector('details');const taskId=expanded.dataset.taskId;expanded.open=true;await flow.poll();assert($('operation-list').querySelector('[data-task-id="'+taskId+'"]').open,'polling preserves expanded task');
+ $('operation-filter').value='failed';$('operation-filter').onchange();assert.equal($('operation-list').querySelectorAll('details').length,1);
  dom.window.close();console.log('PASS: device selection/autofill, fixed/leased/exit IP distinction, persistent task status and interruption notices');
 })().catch(e=>{console.error(e);process.exit(1)});

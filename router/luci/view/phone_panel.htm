@@ -20,12 +20,13 @@
 #pp input[type="checkbox"]:checked{background-color:#087f73!important;border-color:#087f73!important;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='white' stroke-width='3' d='M5 12l4 4L19 6'/%3E%3C/svg%3E")!important;background-size:100% 100%!important}
 #pp input[type="checkbox"]:focus-visible{outline:3px solid #71cfc0!important;outline-offset:2px}
 #pp input[type="checkbox"]:disabled{opacity:.4;cursor:not-allowed}
+#pp #operation-list details.notice{margin:7px 0;padding:10px 13px}#pp #operation-list summary{cursor:pointer;line-height:1.6}#pp .operation-meta{color:var(--muted);font-size:11px;margin:4px 0}#pp #operation-list .operation-failed{border-left-color:#bf5656}#pp #operation-list .operation-done{border-left-color:#359779}
 </style>
 <div id="pp" class="<%=maintenance and 'maintenance-page' or 'home-page'%>">
  <div class="maintenance-heading"><h2>管理维护</h2><p>初始化、维护任务和受管设备编辑。</p></div>
  <div class="hero home-only"><div><div class="eyebrow">PHONE NETWORK · LOCAL CONSOLE</div><h2>手机出口与独立 DNS</h2><div class="sub"><span id="pp-count">—</span> 台手机 · 全部手机节点 · Google 加密解析<br>添加设备前检查冲突，预览确认后统一应用。</div></div><div class="readonly">● 安全添加 · LuCI 登录保护</div></div>
  <div class="maintenance-only">
- <section class="notice"><h3>统一任务与恢复状态</h3><button id="operation-refresh" type="button">刷新任务</button><p id="operation-note">任务在后台执行，刷新页面后仍可查看；中断任务不会自动重试。</p><div id="operation-list"></div></section>
+ <section class="notice"><h3>统一任务与恢复状态</h3><button id="operation-refresh" type="button">刷新任务</button><p id="operation-note">任务在后台执行，刷新页面后仍可查看；中断任务不会自动重试。</p><div class="pf-tools"><label>任务筛选 <select id="operation-filter"><option value="all">全部状态</option><option value="active">进行中</option><option value="failed">失败／中断</option><option value="done">已完成</option></select></label><span id="operation-count" role="status"></span><button id="operation-more" type="button">查看更多</button></div><div id="operation-list"></div></section>
  <div class="notice"><button id="init-check">检查并预览初始化</button> <button id="init-confirm" hidden>确认初始化（会短暂断网）</button><pre id="init-message" hidden></pre></div>
  <div class="notice"><h3>维护任务中心（开发版）</h3><select id="task-action"><option value="doctor">环境检查</option><option value="backup">创建本地备份</option><option value="initialize">初始化（短暂断网）</option><option value="dependencies">安装缺失依赖</option><option value="repair_hooks">检查并修复钩子</option></select><button id="task-submit">确认并执行</button><button id="task-refresh">刷新任务记录</button><pre id="task-history">尚未读取</pre></div>
 

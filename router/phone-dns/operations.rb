@@ -31,10 +31,10 @@ module PhoneOperations
   [['/etc/phone-dns/jobs/*.yaml','设备添加'],['/etc/phone-dns/tasks/*.yaml','维护']].each do |pattern,label|
    Dir.glob(PanelStore.path(pattern)).sort.reverse.first(30).each do |p|
     r=PanelStore.read(p,{});if r['boot'];old=r['status'];reconcile(r);PanelStore.write(p,r) if old!=r['status'];end;id=File.basename(p,'.yaml');next if children.include?(id)
-    legacy<<{'id'=>label+':'+id,'action'=>r['action'] || label,'status'=>r['status'],'stage'=>r['message'],'message'=>r['message'],'backup'=>r['backup']}
+    legacy<<{'id'=>label+':'+id,'action'=>r['action'] || label,'status'=>r['status'],'stage'=>r['message'],'message'=>r['message'],'backup'=>r['backup'],'rolled_back'=>r['rolled_back'],'historical'=>true,'at'=>(Time.local(*[id[0,4],id[4,2],id[6,2],id[8,2],id[10,2],id[12,2]].map(&:to_i)).to_i rescue File.mtime(p).to_i)}
    end
   end
-  (current+legacy).first(70)
+  (current+legacy).sort_by{|r|-r.fetch('at',0).to_i}.first(70)
  end
  def self.start(action,request)
   raise '不支持的操作' unless ACTIONS.key?(action)
@@ -44,7 +44,7 @@ module PhoneOperations
    raise '已有配置任务，请等待完成' if list.any?{|r|%w[queued running].include?(r['status'])}
    id=Time.now.strftime('%Y%m%d%H%M%S')+'-'+Random.bytes(6).unpack1('H*');path=directory+'/'+id+'.json'
    PanelStore.write(directory+'/'+id+'.request',request)
-   PanelStore.write(path,{'id'=>id,'action'=>action,'status'=>'queued','stage'=>'等待执行','message'=>'已提交后台任务，可安全刷新页面','at'=>Time.now.to_i,'boot'=>boot})
+   PanelStore.write(path,{'id'=>id,'action'=>action,'subject'=>request.values_at('ip','new_ip','name','original_name').compact.map(&:to_s).uniq.join(' → ')[0,180],'status'=>'queued','stage'=>'等待执行','message'=>'已提交后台任务，可安全刷新页面','at'=>Time.now.to_i,'boot'=>boot})
    pid=Process.spawn({'PHONE_PANEL_OPERATION_ID'=>id},'/usr/bin/ruby',__FILE__,'worker',id,in:File::NULL,out:File::NULL,err:File::NULL,pgroup:true)
    r=PanelStore.read(path,{});r['pid']=pid;PanelStore.write(path,r);Process.detach(pid)
    {'ok'=>true,'operation_id'=>id,'message'=>'后台任务已提交，请查看统一任务中心'}
