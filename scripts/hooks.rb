@@ -1,12 +1,25 @@
 require 'yaml'
 # Optional root argument is solely for offline image preparation/testing.
 root=ARGV[1] || ''
-raise 'Root must be absolute' unless root.empty? || root.start_with?('/')
+raise 'Root must be absolute' unless root.empty? || root.start_with?('/') || (RUBY_PLATFORM.match?(/mswin|mingw/)&&root.match?(/\A[A-Za-z]:[\\\/]/))
 mode=ARGV[0] || 'install';raise 'install or remove required' unless %w[install remove].include?(mode)
 start='# BEGIN PHONE-PANEL MANAGED HOOK';finish='# END PHONE-PANEL MANAGED HOOK'
 blocks={
 'openclash_custom_overwrite.sh'=>"ruby /etc/phone-dns/align-dns.rb \"$1\" || exit 1\nruby /etc/phone-dns/add-listeners.rb \"$1\" || exit 1\n",
 'openclash_custom_firewall_rules.sh'=>"/etc/openclash/custom/phone-routing.sh || exit 1\nCFG=$(uci -q get openclash.config.config_path)\nruby /etc/phone-dns/align-dns.rb \"/etc/openclash/${CFG##*/}\" live || exit 1\n"}
+# Recognize only exact hook bodies shipped before managed markers existed.
+legacy={
+ 'openclash_custom_overwrite.sh'=>[blocks['openclash_custom_overwrite.sh'].lines.map(&:strip)],
+ 'openclash_custom_firewall_rules.sh'=>[]
+}
+%w[codex_phone_routing.sh phone-routing.sh].each do |script|
+ ['exit 1','logger -t phone-dns "Auto-alignment failed; inspect configuration"'].each do |failure|
+  legacy['openclash_custom_firewall_rules.sh']<<[
+   '/etc/openclash/custom/'+script,
+   'CFG=$(uci -q get openclash.config.config_path)',
+   'ruby /etc/phone-dns/align-dns.rb "/etc/openclash/${CFG##*/}" live || '+failure]
+ end
+end
 base=root+'/etc/openclash/custom';raise 'OpenClash custom directory missing' unless Dir.exist?(base)
 original={};updates={}
 blocks.each do |name,body|
@@ -15,7 +28,15 @@ blocks.each do |name,body|
  raise 'Unbalanced hook markers; repair manually' unless text.scan(start).size==text.scan(finish).size && text.scan(start).size<=1
  text=text.sub(/#{Regexp.escape(start)}\n.*?#{Regexp.escape(finish)}\n?/m,'')
  if mode=='install'
-  # Existing legacy hooks cannot safely be guessed or replaced.
+  lines=text.lines
+  matches=legacy.fetch(name).flat_map do |body|
+   (0..[lines.size-body.size,-1].max).select{|index|lines[index,body.size].map(&:strip)==body}.map{|index|[index,body.size]}
+  end
+  raise 'Duplicate legacy hook bodies; repair manually' if matches.size>1
+  lines.slice!(*matches.first) if matches.size==1
+  text=lines.join
+  # Unknown custom integrations are still rejected; all unrelated shell code survives.
+
   raise 'Unmarked legacy phone-panel integration found; migrate manually' if text.include?('/etc/phone-dns/') || text.include?('phone-routing.sh') || text.include?('codex_phone_routing.sh')
   block=start+"\n"+body+finish+"\n"
   index=text.index(/^\s*exit\s+0\s*$/)

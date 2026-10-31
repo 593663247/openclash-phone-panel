@@ -1,6 +1,7 @@
 require_relative 'support'
 require_relative '../router/phone-dns/binding-manager'
 require_relative '../router/phone-dns/alignment'
+require_relative '../router/phone-dns/add-listeners'
 
 PhoneSettings.define_singleton_method(:values){@fixture_settings ||= validate({})}
 fixture_directory do |root|
@@ -36,12 +37,7 @@ fixture_directory do |root|
   end
   true
  end
- finalize=lambda do |file|
-  config=YAML.safe_load(File.binread(file),aliases:true);mapping=PanelStore.read(PanelStore.path('/etc/phone-dns/mapping.yaml'),[])
-  config['sniffer']={'skip-src-address'=>mapping.flat_map{|g|g['ips']}.map{|addr|addr+'/32'}}
-  config['listeners']=mapping.map{|g|{'name'=>"phone-dns-#{g['id']}",'proxy'=>g['node']}}
-  PanelStore.atomic(file,config.to_yaml)
- end
+ finalize=PhoneListeners.method(:apply)
  PhoneApply.define_singleton_method(:command) do |*args|
   calls<<args
   raise 'Injected renderer failure' if failure==:render && args==['/usr/bin/ruby','/etc/phone-dns/render-dns.rb']
@@ -49,7 +45,8 @@ fixture_directory do |root|
    PhoneAlignment.run(args[2])
   elsif args==['/usr/bin/ruby','/etc/phone-dns/render-dns.rb']
    PanelStore.atomic(PanelStore.path('/etc/phone-dns/config.json'),'{}')
-   PanelStore.write(PanelStore.path('/etc/phone-dns/listeners.yaml'),[])
+   listeners=PanelStore.read(PanelStore.path('/etc/phone-dns/mapping.yaml'),[]).map{|g|{'name'=>"phone-dns-#{g['id']}",'type'=>'socks','listen'=>'127.0.0.1','port'=>g['socks_port'],'udp'=>true,'users'=>[],'proxy'=>g['node']}}
+   PanelStore.write(PanelStore.path('/etc/phone-dns/listeners.yaml'),listeners)
    PanelStore.read(PanelStore.path('/etc/phone-dns/mapping.yaml'),[]).each{|g|PanelStore.atomic(PanelStore.path("/etc/phone-dns/group-#{g['id']}.conf"),'generated')}
   elsif args==['/etc/init.d/openclash','start']
    active=File.binread(selected).force_encoding('UTF-8');running=PanelStore.path('/etc/openclash/'+File.basename(active))
@@ -95,6 +92,23 @@ fixture_directory do |root|
  PhoneAlignment.run(runtime);finalize.call(runtime);PhoneApply.verify(source);PhoneApply.checkpoint(source)
  assert(YAML.safe_load(File.binread(source))['rules'].first=="SRC-IP-CIDR,#{ip}/32,#{a}",'subscription replacement must repair the source too')
  assert(PanelStore.read(PanelStore.path('/etc/phone-dns/devices.yaml'),[]).first['group']==7,'group rebuild must not change desired node identity')
+ # Actual OpenClash invokes the overwrite hook with /tmp/<selected basename>.
+ temporary=PanelStore.path('/tmp/a.yaml');PanelStore.mkdir(File.dirname(temporary));File.binwrite(temporary,base.reject{|key,_|key=='sniffer'}.to_yaml)
+ assert(PhoneAlignment.valid_target?(source,temporary))
+ assert(!PhoneAlignment.valid_target?(source,temporary,live:true),'generation files must not be accepted for live firewall application')
+ unrelated=PanelStore.path('/tmp/b.yaml');File.binwrite(unrelated,base.to_yaml)
+ assert(!PhoneAlignment.valid_target?(source,unrelated),'another configuration generation file must be rejected')
+ PhoneAlignment.run(temporary);finalize.call(temporary)
+ generated=YAML.safe_load(File.binread(temporary),aliases:true)
+ assert(generated['listeners'].any?{|l|l['proxy']==a&&l['port']==18007},'the real listener helper must process OpenClash generation files')
+ assert(generated.dig('sniffer','enable')==false&&generated.dig('sniffer','skip-src-address').include?(ip+'/32'),'missing sniffer must remain disabled while recording managed exclusions')
+ snapshot=PhoneBindings.info.dig('status','backup')
+ manifest=PanelStore.read(PanelStore.path(snapshot)+'/manifest.json',{})
+ assert(!manifest.keys.any?{|p|p.start_with?('/tmp/')},'durable configuration backups must not recreate OpenClash-owned temporary files')
+ unless RUBY_PLATFORM.match?(/mswin|mingw/)
+  File.chmod(0666,temporary);assert(!PhoneAlignment.valid_target?(source,temporary),'writable generation files must be rejected');File.chmod(0600,temporary)
+  linked=PanelStore.path('/tmp/a-link.yaml');File.symlink(temporary,linked);assert(!PhoneAlignment.valid_target?(source,linked));File.delete(linked)
+ end
  good=PhoneBindings.info['last_good']['backup'];assert(good,'verified complete snapshot must be available')
  held=File.open(PanelStore.path('/var/lock/phone-panel.lock'),'a');held.flock(File::LOCK_EX);begin;rejects('external hooks cannot race a panel transaction'){PhoneAlignment.run(runtime)};ensure;held.close;end
  before_guard=PhoneBindings.guard_text(guarded);before_nft=File.binread(PanelStore.path('/etc/nftables.d/90-phone-fixed-egress.nft'))

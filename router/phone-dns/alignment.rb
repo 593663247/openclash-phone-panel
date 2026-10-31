@@ -9,6 +9,19 @@ module PhoneAlignment
   format=lambda{|n|[24,16,8,0].map{|bits|(n>>bits)&255}.join('.')}
   ranges.map{|a,b|a==b ? format.call(a) : format.call(a)+'-'+format.call(b)}.join(', ')
  end
+ def self.valid_target?(source,file,live:false)
+  runtime=PanelStore.path('/etc/openclash/'+File.basename(source))
+  temporary=PanelStore.path('/tmp/'+File.basename(source))
+  return false unless [source,runtime].include?(file)||(!live&&file==temporary)
+  return false unless File.file?(file)&&!File.symlink?(file)&&File.realpath(file)==File.expand_path(file)
+  if file==temporary
+   stat=File.stat(file)
+   return false unless stat.uid==Process.euid
+   return false if !RUBY_PLATFORM.match?(/mswin|mingw/)&&(stat.mode&0022)!=0
+  end
+  true
+ rescue SystemCallError;false
+ end
  def self.run(file,live:false)
   base=PanelStore.path('/etc/phone-dns');PanelStore.mkdir(PanelStore.path('/var/lock'))
   unless PhoneBindings.parent_apply?
@@ -17,8 +30,7 @@ module PhoneAlignment
   end
   lock=File.open(PanelStore.path('/var/lock/phone-dns-align.lock'),'a',0600);lock.flock(File::LOCK_EX)
   source=PhoneApply.source
-  allowed=[source,PanelStore.path('/etc/openclash/'+File.basename(source))]
-  raise '配置合并路径不属于当前源配置或运行配置' unless allowed.include?(file) && !File.symlink?(file)
+  raise '配置合并路径不属于当前源配置、运行配置或受信任的生成临时文件' unless valid_target?(source,file,live:live)
   document=PhoneBindings.read
   # Install protection before parsing potentially broken subscription YAML.
   PhoneBindings.guard(document) if document
@@ -33,7 +45,11 @@ module PhoneAlignment
    mapping=PhoneBindings.mapping(document,mapping)
   end
   files=(PhoneApply.config_files(source)+[file]).uniq
-  backup,snapshots=PhoneApply.snapshot(files);written_sources={}
+  # OpenClash owns its temporary generation file; durable recovery must never recreate it.
+  ephemeral=file==PanelStore.path('/tmp/'+File.basename(source))
+  backup,snapshots=PhoneApply.snapshot(ephemeral ? files-[file] : files)
+  snapshots[file]=File.binread(file) if ephemeral
+  written_sources={}
   boot=(File.read('/proc/sys/kernel/random/boot_id').strip rescue 'test')
   PhoneBindings.status('generating',{'pid'=>Process.pid,'boot'=>boot,'backup'=>backup,'message'=>'正在合并节点和设备绑定'})
   begin

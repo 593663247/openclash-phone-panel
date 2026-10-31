@@ -1,4 +1,4 @@
-> Release: **v1.3.0** · opkg: **1.3.0-1** · [Changelog](CHANGELOG.md) · [Downloads](https://github.com/593663247/openclash-phone-panel/releases/tag/v1.3.0)
+> Release: **v1.3.1** · opkg: **1.3.1-1** · [Changelog](CHANGELOG.md) · [Downloads](https://github.com/593663247/openclash-phone-panel/releases/tag/v1.3.1)
 
 # OpenClash Phone Panel
 
