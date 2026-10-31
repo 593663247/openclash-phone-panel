@@ -32,3 +32,7 @@ The test button runs DNS/TCP/HTTPS egress checks and a separate **SOCKS5 UDP ASS
 ## Verification boundaries
 
 Automated fixtures cover transactions, stale runtime rejection, file/runtime recovery distinction, registry merging/conflicts, reference-blocked deletion, credential handling, device autofill and operation interruption classification. Real-router checks are non-destructive: loading the UI, read-only diagnostics, an idempotent reload and preservation of existing bindings. Full real-device deletion, deliberate live failure, power-loss/reboot recovery and cross-subscription migration are not production-tested.
+
+## Durable binding state (1.2.0)
+
+Preview and confirm the initial migration under Maintenance. The independent MAC-keyed registry, rather than a transient subscription rule, controls managed bindings. Derived source/runtime rules are rebuilt with exact ownership and conflict checks; independent startup protection is retained on load failures. Full last-verified snapshots include selected configuration, settings, DHCP and private node/binding data, with integrity checks and referenced-backup retention. Pre-registry program recovery is refused after migration. See [PERSISTENCE.md](PERSISTENCE.md) for deployment steps and validation limits.

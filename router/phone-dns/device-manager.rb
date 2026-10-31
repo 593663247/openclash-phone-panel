@@ -96,7 +96,7 @@ def plan(req)
  d=valid_input(req);baseline=revision
  raise '存在未保存的 DHCP 配置，请先保存或撤销后重试' unless quiet('uci','changes','dhcp').strip.empty?
  raise '存在未保存的面板设置，请先保存或撤销后重试' unless quiet('uci','changes','phone_panel').strip.empty?
- mapping=catalog;document=PhoneBindings.require_migrated(mapping);PhoneBindings.assert_mapping(document,mapping);g=mapping.find{|x|x['id']==d['group']};raise 'DNS 分组不存在' unless g
+ mapping=catalog;source=PhoneBindings.compose(YAML.load_file(source_path,aliases:true));document=PhoneBindings.require_migrated(mapping,cfg:source);PhoneBindings.assert_mapping(document,mapping);g=mapping.find{|x|x['id']==d['group']};raise 'DNS 分组不存在' unless g
  raise '该 IP 已在面板管理范围内，请勿重复添加' if mapping.any?{|x|x['ips'].include?(d['ip'])}
  source=PhoneBindings.compose(YAML.load_file(source_path,aliases:true))
  existing=(source['rules']||[]).select{|r|r.start_with?('SRC-IP-CIDR,') && r.split(',')[1]==d['ip']+'/32'}

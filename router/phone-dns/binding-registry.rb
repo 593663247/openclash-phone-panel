@@ -120,6 +120,8 @@ module PhoneBindings
   apply_guard(record.fetch('devices'),record.fetch('bridge'))
  end
  def self.capture(cfg,mapping,devices,hosts,previous:nil,expected_names:{})
+  valid_groups=mapping.is_a?(Array)&&mapping.all?{|g|g.is_a?(Hash)&&g['id'].is_a?(Integer)&&g['id'].between?(1,PhoneSettings.port('max_groups'))&&g['node'].is_a?(String)&&g['ips'].is_a?(Array)}
+  raise '分组字段无效，已停止迁移' unless valid_groups&&mapping.map{|g|g['id']}.uniq.size==mapping.size&&mapping.map{|g|g['node']}.uniq.size==mapping.size
   rows=mapping.flat_map do |group|
    group.fetch('ips',[]).map do |ip|
     names=(cfg['proxies']||[]).select{|n|n['name']==group['node']};raise "节点 #{group['node']} 缺失或重名" unless names.size==1
@@ -141,14 +143,16 @@ module PhoneBindings
   validate(document);check_hosts(document,hosts);document
  end
  def self.write(document);PanelStore.write(path,validate(document));end
- def self.require_migrated(mapping)
+ def self.require_migrated(mapping,cfg:nil)
   document=read
-  raise '请先在管理维护预览并迁移设备绑定，再修改已有设备' if !document && mapping.any?{|g|!g.fetch('ips',[]).empty?}
+  legacy=cfg&&cfg.fetch('rules',[]).is_a?(Array)&&cfg.fetch('rules',[]).any?{|r|a=r.to_s.split(',');a[0]=='SRC-IP-CIDR'&&a[1].to_s.end_with?('/32')&&PhoneSettings.phone?(a[2])}
+  raise '请先在管理维护预览并迁移设备绑定，再修改已有设备' if !document && (legacy||mapping.any?{|g|!g.fetch('ips',[]).empty?})
   document
  end
  def self.compose(cfg,document=read)
   raise 'OpenClash 配置必须是对象' unless cfg.is_a?(Hash)
   raise 'OpenClash 节点列表格式无效' unless cfg['proxies'].nil?||(cfg['proxies'].is_a?(Array)&&cfg['proxies'].all?{|n|n.is_a?(Hash)&&n['name'].is_a?(String)})
+  raise 'OpenClash 规则列表格式无效' unless cfg['rules'].nil?||(cfg['rules'].is_a?(Array)&&cfg['rules'].all?{|r|r.is_a?(String)})
   output=Marshal.load(Marshal.dump(cfg));PhoneNodeRegistry.merge(output)
   return output unless document
   validate(document);rules=output['rules']||[]

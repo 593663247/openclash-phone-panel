@@ -68,6 +68,8 @@ fixture_directory do |root|
  assert(result['ok'],'migration must persist and validate the running configuration: '+result.to_s)
  assert(PhoneBindings.info.dig('status','state')=='verified')
  saved_good=PhoneBindings.info['last_good']['backup'];File.delete(PhoneBindings.path);assert(PhoneBindings.info['blocked'],'missing registries must not silently re-import a replaced source');assert(PhoneApply.restore(saved_good)['ok'],'last verified state must repair a missing registry')
+ File.binwrite(PhoneBindings.path,'broken: [');assert(PhoneBindings.info['blocked']);assert(PhoneApply.restore(saved_good)['ok'],'a complete snapshot must repair corrupt desired state')
+ manifest=PanelStore.path(saved_good)+'/manifest.json';intact=File.binread(manifest);File.binwrite(manifest,'tampered');rejects('corrupt snapshots must fail before writes'){PhoneApply.restore(saved_good)};File.binwrite(manifest,intact)
  old_source_method=PhoneApply.method(:source)
  PhoneApply.define_singleton_method(:source){|**options|raise 'corrupt config selection' if File.binread(selected)=='broken';old_source_method.call(**options)}
  File.binwrite(selected,'broken');assert(PhoneApply.restore(saved_good)['ok'],'a complete snapshot must recover invalid configuration selection')

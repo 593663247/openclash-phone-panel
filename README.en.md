@@ -78,3 +78,7 @@ The Devices & Nodes page supports SOCKS5 creation, editing and reference-checked
 ### Unified operations and node lifecycle
 
 Persistent background tasks, shared apply/recovery verification, device selection, fixed/leased/egress IP distinction, reference-aware SOCKS5 editing/deletion, a private node registry and measured UDP datagram tests are now available. See [operations and verification boundaries](docs/OPERATIONS.md). Destructive live recovery and cross-subscription migration remain unverified.
+
+### Durable device bindings (1.2.0)
+
+Existing installations must preview and confirm migration under Maintenance → Device-binding persistence. A versioned independent registry restores exact owned rules during subscription/configuration changes, with conflict rejection, an early independent forwarding guard and complete verified snapshots. Missing/corrupt policy data never silently becomes an empty installation. See [persistence and recovery](docs/PERSISTENCE.md). Physical power-loss and device/network acceptance remain deployment checks.
