@@ -130,6 +130,32 @@ fixture_directory do |root|
  assert(PhoneBindings.info.dig('status','state')=='interrupted','power/process interruption must be observable')
  PhoneAlignment.run(source);assert(PhoneBindings.info.dig('status','state')=='generated','reboot derivation is idempotent and does not replay user mutations')
  assert(PhoneBindings.read['revision']==1,'configuration regeneration must not invent device revisions')
+ # Execute the real live branch with fw4 flow offload present. Never accept
+ # invented nft commands or change shared acceleration state from this hook.
+ original_capture=PanelStore.method(:capture)
+ PanelStore.define_singleton_method(:capture){|*args|args==['nft','list','flowtable','inet','fw4','ft'] ? ['table inet fw4 { flowtable ft {} }',0] : original_capture.call(*args)}
+ original_popen=IO.method(:popen)
+ begin
+  IO.define_singleton_method(:popen) do |*args,&block|
+   if args[0]==['nft','-f','-']
+    require 'stringio'
+    stream=StringIO.new;block.call(stream)
+    assert(stream.string.include?('flush chain inet fw4 codex_phone_dns'))
+    # Set child exit status as production checks it after the nft subprocess.
+    system(RbConfig.ruby,'-e','exit 0')
+   else
+    original_popen.call(*args,&block)
+   end
+  end
+  require 'rbconfig'
+  finalize.call(runtime);PhoneAlignment.run(runtime,live:true)
+  assert(!calls.any?{|args|args.include?('flowtable')},'live hook must not manipulate the fw4 shared flowtable')
+  assert(calls.any?{|args|args==['/etc/init.d/phone-dns','restart']})
+  assert(PhoneBindings.info.dig('status','state')=='verified','flow-offload presence must not prevent live verification')
+ ensure
+  IO.define_singleton_method(:popen,original_popen)
+  PanelStore.define_singleton_method(:capture,original_capture)
+ end
  assert(calls.any?{|args|args==['fw4','check']})
  assert(calls.any?{|args|args==['/etc/init.d/phone-panel-guard','enable']},'migration must enable the new boot helper even after an older online updater staged the code')
 end

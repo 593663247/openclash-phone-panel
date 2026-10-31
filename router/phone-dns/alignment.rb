@@ -109,7 +109,9 @@ module PhoneAlignment
     text+=rules.map{|r|'add rule inet fw4 codex_phone_dns '+r.strip}.join("\n")+"\n"
     IO.popen(['nft','-f','-'],'w'){|io|io.write(text)};raise 'DNS 接管规则应用失败' unless $?.success?
     command('/etc/init.d/phone-dns','restart');command('/etc/init.d/dnsmasq','reload')
-    command('nft','flush','flowtable','inet','fw4','ft') if PanelStore.capture('nft','list','flowtable','inet','fw4','ft')[1]==0
+    # fw4 owns the shared offload table. nft has no flush-flowtable command.
+    # Full panel applies already reload fw4 before core startup; a live hook
+    # updates only panel sets/chains and must not rewrite shared flowtables.
     PhoneApply.wait_ready;PhoneApply.verify(source);PhoneApply.checkpoint(source) if document
    end
    {'ok'=>true,'count'=>ips.size}
