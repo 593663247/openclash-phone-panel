@@ -72,3 +72,7 @@ MIT License. Not affiliated with OpenClash or ImmortalWrt.
 ### Landing-node creation
 
 The maintenance page now supports SOCKS5 node creation with credentials, explicit UDP preference, an optional concrete dialer proxy, redacted preview, confirmed loading and rollback. See [node management](docs/NODE_MANAGEMENT.md). This update also fixes device IP migration, DHCP hostname synchronization, node selectors and interval-set merging.
+
+### Unified operations and node lifecycle
+
+Persistent background tasks, shared apply/recovery verification, device selection, fixed/leased/egress IP distinction, reference-aware SOCKS5 editing/deletion, a private node registry and measured UDP datagram tests are now available. See [operations and verification boundaries](docs/OPERATIONS.md). Destructive live recovery and cross-subscription migration remain unverified.

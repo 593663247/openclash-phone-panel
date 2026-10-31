@@ -11,7 +11,7 @@ patterns = [
     r'(?im)^\s*(?:password|secret|private-key)\s*:\s*[\w+/=]{6,}\s*$',
 ]
 forbidden = {'.png', '.jpg', '.jpeg', '.pcap', '.pcapng', '.zip', '.gz'}
-runtime = {'mapping.yaml', 'devices.yaml', 'listeners.yaml', 'import-status.yaml', 'config.json', 'hosts.yml'}
+runtime = {'managed-nodes.yaml', 'mapping.yaml', 'devices.yaml', 'listeners.yaml', 'import-status.yaml', 'config.json', 'hosts.yml'}
 errors = []
 files = [p for p in root.rglob('*') if p.is_file() and '.git' not in p.parts and 'node_modules' not in p.parts]
 for p in files:

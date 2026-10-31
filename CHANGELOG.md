@@ -38,3 +38,12 @@ Validation covers source syntax and isolated behavior. No production router depl
 - Replace numeric rebind group entry with named node selection and operation-specific fields.
 - Retain private firewall diagnostics; enable interval-set auto-merge to avoid range extension conflicts.
 - Add backend transaction/rollback, credential-redaction and browser DOM regression tests. Real newly provisioned paid-node connectivity/UDP remains unverified.
+
+## Unreleased — unified operations, device selection and node lifecycle
+- Persistent operation journal, stage tracking, reboot/dead-worker interruption classification and confirmed snapshot recovery.
+- Shared lock/apply/verification/rollback engine for device mutation, node mutation and initialization; atomic configuration writes and separate file/runtime restoration status.
+- Managed-device dropdown with auto-filled fields, configured/leased/public-IP distinction.
+- SOCKS5 update/delete with reference checks, preservation of advanced fields and blank-password retention.
+- Private managed-node registry, source-switch merge and explicit collision refusal.
+- Real per-node SOCKS5 UDP ASSOCIATE/DNS-datagram testing with no direct fallback; display measured UDP status separately from the configuration flag.
+- Extended fixture and DOM regression suites. Destructive live recovery and cross-device migration remain unverified.

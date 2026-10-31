@@ -33,7 +33,7 @@ function attach(api){
     if(f.search&&![p.hostname,p.ip,p.mac,g.node,g.region].join(' ').toLowerCase().includes(f.search.toLowerCase()))continue;
     const t=p.traffic||{},today=t.today||{},month=t.month||{};
     const todayText=t.today_available===false?'尚未累计':bytes((today.up||0)+(today.down||0)),monthText=t.month_available===false?'尚未累计':bytes((month.up||0)+(month.down||0));
-    rows.push('<tr'+(t.alert?' class="pf-attention"':'')+'><td><strong>'+esc(p.hostname||'未命名')+'</strong><small>'+esc(p.mac||'MAC 未记录')+'</small></td><td>'+esc(p.ip)+'</td><td><span class="pf-state pf-'+esc(p.online_state||'unknown')+'" title="'+esc(p.online_evidence||'')+'">'+esc(onlineText[p.online_state]||onlineText.unknown)+'</span><small>'+esc(p.online_evidence||'')+'</small></td><td>'+esc(date(p.last_seen))+'</td><td>'+esc(t.available?bytes(t.rate_up)+' / '+bytes(t.rate_down):'采样未就绪')+'<small>↑ / ↓ 每秒</small></td><td>'+esc(todayText)+'<small>↑ '+esc(bytes(today.up))+' · ↓ '+esc(bytes(today.down))+'</small></td><td>'+esc(monthText)+(t.alert?'<small class="pf-danger">达到流量／速率提醒阈值</small>':'')+'</td><td>'+esc(g.node)+'<small>'+esc(g.region||'未分类')+'</small></td></tr>');
+    rows.push('<tr'+(t.alert?' class="pf-attention"':'')+'><td><strong>'+esc(p.hostname||'未命名')+'</strong><small>'+esc(p.mac||'MAC 未记录')+'</small></td><td>'+esc(p.ip)+'</td><td><span class="pf-state pf-'+esc(p.online_state||'unknown')+'" title="'+esc(p.online_evidence||'')+'">'+esc(onlineText[p.online_state]||onlineText.unknown)+'</span><small>'+esc(p.online_evidence||'')+'</small></td><td>'+esc(date(p.last_seen))+'</td><td>'+esc(t.available?bytes(t.rate_up)+' / '+bytes(t.rate_down):'采样未就绪')+'<small>↑ / ↓ 每秒</small></td><td>'+esc(todayText)+'<small>↑ '+esc(bytes(today.up))+' · ↓ '+esc(bytes(today.down))+'</small></td><td>'+esc(monthText)+(t.alert?'<small class="pf-danger">达到流量／速率提醒阈值</small>':'')+'</td><td>'+esc(g.node)+'<small>'+esc(g.region||'未分类')+' · 最近公网出口：'+esc(g.health&&g.health.exit_ip||'未检测')+'</small></td></tr>');
    }
   }
   $('pf-device-rows').innerHTML=rows.join('')||'<tr><td colspan="8">没有符合条件的设备。</td></tr>';
@@ -126,7 +126,7 @@ function attach(api){
  $('pf-bulk-apply').onclick=async function(){
   if(!bulkPlan||api.busy()||!root.confirm('确认整批添加？将统一备份和校验，并短暂重启代理一次。'))return;
   this.disabled=true;
-  try{const data=await api.post('bulk_apply',bulkPlan);invalidateBulk();api.watchJob(data.job);message('pf-bulk-result','批量任务 '+data.job+' 已提交，请查看设备添加任务状态。')}
+  try{const data=await api.post('bulk_apply',bulkPlan);invalidateBulk();if(data.job)api.watchJob(data.job);message('pf-bulk-result',data.message||'已提交，请查看统一任务中心')}
   catch(e){message('pf-bulk-result',e)}finally{this.disabled=false}
  };
  function paintVersions(){

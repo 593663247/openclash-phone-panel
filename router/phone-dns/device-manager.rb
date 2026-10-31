@@ -1,5 +1,6 @@
 require_relative 'settings'
 require_relative 'device-edit'
+require_relative 'apply-engine'
 require_relative 'panel-store'
 def ip_elements(ips)
  a=ips.map{|ip|ip.split('.').map(&:to_i).inject(0){|n,v|n*256+v}}.uniq.sort
@@ -18,7 +19,7 @@ def json(x)
  when TrueClass;'true';when FalseClass;'false';when NilClass;'null';else;x.to_s;end
 end
 def atomic(path,data)
- t=path+'.panel-tmp';File.open(t,'wb',0600){|f|f.write(data)};File.rename(t,path)
+ PhoneApply.atomic(path,data)
 end
 def run(*args)
  o=IO.popen(args+[{err:[:child,:out]}],&:read)
@@ -155,79 +156,31 @@ def jobwrite(id,data)
  atomic(JOBS+'/'+id+'.yaml',json(data))
 end
 def apply_worker(id)
- job=YAML.load_file(JOBS+'/'+id+'.yaml');backup=nil;snaps={}
- lock=File.open(router_path('/var/lock/phone-panel.lock'),'w',0600)
-  raise '另一个设备变更正在应用，请稍后重试' unless lock.flock(File::LOCK_EX|File::LOCK_NB)
-  req=job['request'];checked=req['batch'] ? batch_plan(req) : plan(req);plans=req['batch'] ? checked['devices'] : [checked];raise '配置已发生变化，请重新预览后应用' unless req['revision']==checked['revision']
-  tracked.each{|f|snaps[f]=File.exist?(f) ? File.binread(f) : nil}
-  backup=router_path('/root/phone-panel-changes');Dir.mkdir(backup,0700) unless Dir.exist?(backup);backup+='/'+id;Dir.mkdir(backup,0700)
-  snaps.each_with_index{|(f,s),i|File.write(backup+"/file-#{i}",s) if s}
-  File.write(backup+'/manifest.yaml',snaps.keys.to_yaml)
-  @command_log=backup+'/commands.log'
-  jobwrite(id,{'status'=>'running','message'=>'正在更新并检查配置','backup'=>backup})
-  cfg=source_path;a=YAML.load_file(cfg,aliases:true);mapping=catalog
+ job=YAML.load_file(JOBS+'/'+id+'.yaml');req=job.fetch('request');cfg=source_path
+ outcome=PhoneApply.transaction(cfg,expected_revision:req['revision'],revision:lambda{revision}) do
+  checked=req['batch'] ? batch_plan(req) : plan(req);plans=req['batch'] ? checked['devices'] : [checked]
+  a=YAML.load_file(cfg,aliases:true);mapping=catalog
   devices=File.exist?(BASE+'/devices.yaml') ? (YAML.load_file(BASE+'/devices.yaml') || []) : []
-  changed_dhcp=false
+  changed=false
   plans.each do |p|
    mapping.find{|g|g['id']==p['group']}['ips']<<p['ip']
-   idx=a['rules'].index{|r|!r.start_with?('SRC-IP-CIDR,')}||0
-   rule="SRC-IP-CIDR,#{p['ip']}/32,#{p['node']}"
+   rule="SRC-IP-CIDR,#{p['ip']}/32,#{p['node']}";idx=a['rules'].index{|r|!r.start_with?('SRC-IP-CIDR,')}||0
    a['rules'].insert(idx,rule) unless a['rules'].include?(rule)
    unless p['adopt_lease']
-    sec=PhoneSettings.lease_section('phone_panel',p['ip'])
-    raise 'DHCP 配置段名称冲突' unless quiet('uci','-q','get','dhcp.'+sec).empty?
-    run('uci','set',"dhcp.#{sec}=host")
-    {'mac'=>p['mac'],'ip'=>p['ip'],'name'=>(DeviceEdit.dhcp_hostname(p['name']) || 'phone-'+p['ip'].tr('.','-'))}.each{|k,v|run('uci','set',"dhcp.#{sec}.#{k}=#{v}")}
-    changed_dhcp=true
+    sec=PhoneSettings.lease_section('phone_panel',p['ip']);raise 'DHCP 配置段名称冲突' unless quiet('uci','-q','get','dhcp.'+sec).empty?
+    PhoneApply.command('uci','set',"dhcp.#{sec}=host")
+    {'mac'=>p['mac'],'ip'=>p['ip'],'name'=>(DeviceEdit.dhcp_hostname(p['name']) || 'phone-'+p['ip'].tr('.','-'))}.each{|k,v|PhoneApply.command('uci','set',"dhcp.#{sec}.#{k}=#{v}")};changed=true
    end
    devices<<p.select{|k,v|%w[name ip mac group].include?(k)}
   end
-  run('uci','commit','dhcp') if changed_dhcp
+  PhoneApply.command('uci','commit','dhcp') if changed
   atomic(cfg,a.to_yaml);atomic(BASE+'/mapping.yaml',mapping.to_yaml);atomic(BASE+'/devices.yaml',devices.to_yaml)
   atomic(router_path('/etc/nftables.d/90-phone-fixed-egress.nft'),nft_text(mapping,hosts))
-  run('/etc/openclash/clash','-t','-d','/etc/openclash','-f',cfg)
-  run('/usr/bin/ruby',BASE+'/render-dns.rb')
-  run('/usr/bin/sing-box','check','-c',BASE+'/config.json')
-  atomic(backup+'/candidate-firewall.nft',File.binread(router_path('/etc/nftables.d/90-phone-fixed-egress.nft')))
-  run('fw4','check')
-  jobwrite(id,{'status'=>'running','message'=>'检查通过，正在应用网络配置','backup'=>backup})
-  run('/etc/init.d/firewall','reload')
-  run('/etc/init.d/openclash','stop')
-  File.rename(router_path('/tmp/openclash.change'),router_path('/tmp/phone-panel-quickstart-'+id)) if File.exist?(router_path('/tmp/openclash.change'))
-  run('/etc/init.d/openclash','start')
-  run('/etc/init.d/phone-dns','restart')
-  run('/etc/init.d/dnsmasq','reload')
-  quiet('nft','flush','flowtable','inet','fw4','ft')
-  60.times do
-   break unless quiet('pidof','clash').strip.empty?
-   sleep 1
-  end
-  r=YAML.load_file(router_path('/etc/openclash/'+File.basename(cfg)),aliases:true)
-  plans.each do |p|
-   raise '运行绑定规则未生效' unless r['rules'].include?("SRC-IP-CIDR,#{p['ip']}/32,#{p['node']}")
-   raise '嗅探来源排除未同步' unless r.dig('sniffer','skip-src-address').to_a.include?(p['ip']+'/32')
-   raise 'DNS 防火墙规则未同步' unless quiet('nft','list','chain','inet','fw4','codex_phone_dns').include?(p['ip'])
-   run('nft','get','element','inet','fw4','codex_phone4','{',p['ip'],'}')
-  end
-  jobwrite(id,{'status'=>'done','message'=>"#{plans.size} 台设备已添加，绑定、DNS 与防直连已同步。请重新连接 Wi-Fi 并检测对应分组。",'devices'=>plans.map{|p|p.select{|k,v|%w[name ip mac group node].include?(k)}},'backup'=>backup})
-
-rescue =>e
- recovered=false;rollback_error=nil
- if backup && !snaps.empty?
-  begin
-   snaps.each{|f,s|s ? atomic(f,s) : (File.delete(f) if File.exist?(f))}
-   (Dir.glob(BASE+'/group-*.conf')-snaps.keys).each{|f|File.delete(f)}
-   quiet('uci','revert','dhcp');run('fw4','check');run('/etc/init.d/firewall','reload');run('/etc/init.d/openclash','stop')
-   File.delete(router_path('/tmp/openclash.change')) if File.exist?(router_path('/tmp/openclash.change'))
-   run('/etc/init.d/openclash','start');run('/etc/init.d/phone-dns','restart');run('/etc/init.d/dnsmasq','reload');recovered=true
-  rescue => rollback_exception
-   rollback_error=rollback_exception.message
-  end
+  {'devices'=>plans.map{|p|p.select{|k,v|%w[name ip mac group node].include?(k)}}}
  end
- jobwrite(id,{'status'=>'failed','message'=>e.message,'rolled_back'=>recovered,'backup'=>backup,'diagnostic_log'=>@command_log,'rollback_error'=>rollback_error})
-ensure
- @command_log=nil
- lock.close if lock
+ jobwrite(id,outcome.merge('status'=>outcome['ok'] ? 'done' : 'failed'))
+rescue=>e
+ jobwrite(id,{'status'=>'failed','message'=>e.message})
 end
 if __FILE__==$PROGRAM_NAME
 begin

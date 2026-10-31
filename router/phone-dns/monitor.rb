@@ -1,4 +1,5 @@
 require_relative 'status-lib'
+require_relative 'operations'
 
 module PhoneMonitor
  def self.sample(state,now=Time.now.to_i)
@@ -18,6 +19,7 @@ module PhoneMonitor
  end
  def self.run(once=false)
   PanelStore.with_lock(PanelStore.path('/var/lock/phone-panel-monitor.lock'),true) do
+   PhoneOperations.all
    state=PanelStore.read(PanelStore.ram+'/metrics.yaml',{})
    state=PanelStore.read(PanelStore.state+'/traffic.yaml',{}) if state.empty?
    stopping=false;Signal.trap('TERM'){stopping=true};Signal.trap('INT'){stopping=true}

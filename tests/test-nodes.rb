@@ -16,51 +16,17 @@ assert(PhoneNodes.plan(cfg,request.merge('server'=>'2001:db8::1','username'=>'',
 rejects{PhoneNodes.plan(cfg.merge('proxies'=>[node]),request)}
 rejects{PhoneNodes.plan(cfg.merge('proxy-groups'=>[{'name'=>request['name']}]),request)}
 assert(PhoneNodes.fingerprint('one')!=PhoneNodes.fingerprint('two'))
-fixture_directory do |root|
- fs=Class.new
- fs.const_set(:LOCK_EX,File::LOCK_EX);fs.const_set(:LOCK_NB,File::LOCK_NB)
- fs.define_singleton_method(:basename){|p|File.basename(p)}
- fs.define_singleton_method(:path){|p|p.start_with?('/') ? root+p : p}
- [:binread,:binwrite,:exist?,:file?,:delete].each{|m|fs.define_singleton_method(m){|p,*a|File.public_send(m,path(p),*a)}}
- fs.define_singleton_method(:open){|p,*a,&b|File.open(path(p),*a,&b)}
- fs.define_singleton_method(:rename){|a,b|File.rename(path(a),path(b))}
- ds=Class.new
- ds.define_singleton_method(:exist?){|p|Dir.exist?(fs.path(p))}
- ds.define_singleton_method(:mkdir){|p,*a|Dir.mkdir(fs.path(p),*a)}
- ds.define_singleton_method(:glob){|p|Dir.glob(fs.path(p)).map{|s|s.delete_prefix(root)}}
- io=Class.new
- io.define_singleton_method(:popen){|args,*_|args==['pidof','clash'] ? '123' : ''}
- PhoneNodes.const_set(:File,fs);PhoneNodes.const_set(:Dir,ds);PhoneNodes.const_set(:IO,io)
- ['/root','/var','/var/lock','/etc','/etc/openclash','/etc/openclash/config','/etc/phone-dns','/etc/nftables.d','/etc/config','/tmp'].each{|p|Dir.mkdir(root+p)}
- path='/etc/openclash/config/source.yaml';runtime='/etc/openclash/source.yaml'
- %w[success validation_failure stale_runtime].each do |scenario|
-  initial=cfg.to_yaml;fs.binwrite(path,initial);fs.binwrite(runtime,initial)
-  fs.binwrite('/etc/config/dhcp','original DHCP');fs.binwrite('/etc/nftables.d/90-phone-fixed-egress.nft','original nft')
-  fs.binwrite('/etc/phone-dns/mapping.yaml','--- []');fs.binwrite('/tmp/openclash.change','marker')
-  commands=[];failed=false
-  PhoneNodes.define_singleton_method(:command) do |args,log|
-   commands<<args
-   if scenario=='validation_failure' && args.first.end_with?('/clash') && !failed
-    failed=true;raise 'Injected validation failure'
-   end
-   if args==['/etc/init.d/openclash','start'] && scenario!='stale_runtime'
-    fs.binwrite(runtime,fs.binread(path))
-   end
-   'ok'
-  end
-  result=PhoneNodes.apply(path,request.merge('revision'=>PhoneNodes.fingerprint(initial)))
-  if scenario=='success'
-   assert(result['ok']&&YAML.safe_load(fs.binread(path))['proxies'].size==2)
-   assert(!result.to_s.include?(request['password']),'response leaked credentials')
-   assert(!fs.exist?('/tmp/openclash.change'),'quick-start marker must be invalidated')
-  else
-   assert(result['error']&&result['rolled_back'],'failure must report rollback')
-   assert(fs.binread(path)==initial.b,'failed node creation changed source')
-   assert(fs.binread('/etc/config/dhcp')=='original DHCP')
-  end
- end
-end
-puts 'SOCKS5 node validation, credential redaction, source revision, apply/rollback and stale-runtime rejection PASS'
+updated=PhoneNodes.change({'proxies'=>cfg['proxies']+[node.merge('tls'=>true)]},request.merge('operation'=>'update','original_name'=>node['name'],'password'=>'','username'=>'','server'=>'192.0.2.20'),[],[node])
+assert(updated['config']['proxies'].find{|n|n['name']==node['name']}['password']==node['password'],'blank edit must preserve credentials')
+assert(updated['registry'].first['server']=='192.0.2.20'&&updated['registry'].first['tls']==true,'unexposed advanced fields must survive editing')
+rejects{PhoneNodes.change({'proxies'=>[node],'rules'=>['MATCH,'+node['name']]},{'operation'=>'delete','original_name'=>node['name']},[],[node])}
+rejects{PhoneNodes.change({'proxies'=>[node]},{'operation'=>'delete','original_name'=>node['name']},[{'node'=>node['name'],'ips'=>['192.168.1.101']}],[node])}
+deleted=PhoneNodes.change({'proxies'=>[node]},{'operation'=>'delete','original_name'=>node['name']},[],[node]);assert(deleted['registry'].empty?&&deleted['config']['proxies'].empty?)
+redacted=PhoneNodes.summary({'name'=>'wireguard-example','type'=>'wireguard','private-key'=>'fixture-secret-key','preshared-key'=>'fixture-secret-key'})
+assert(!redacted.to_s.include?('fixture-secret-key'),'catalog must never leak non-SOCKS credentials')
+PhoneNodeRegistry.merge({'proxies'=>[]},[node]).tap{|c|assert(c['proxies'].first==node)}
+rejects{PhoneNodeRegistry.merge({'proxies'=>[node.merge('server'=>'192.0.2.99')]},[node])}
+puts 'SOCKS5 CRUD validation, references, credential retention/redaction and registry merge PASS'
 # Keep the admin's explicit UDP setting when generated listeners are appended.
 source=File.read(File.expand_path('../router/phone-dns/add-listeners.rb',__dir__))
 raise 'Explicit UDP choice would be overwritten' unless source.include?("!n.key?('udp')")

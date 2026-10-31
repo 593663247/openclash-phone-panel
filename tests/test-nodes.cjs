@@ -3,7 +3,7 @@ const html=fs.readFileSync('router/luci/view/phone_panel.htm','utf8').replace(/<
 (async()=>{
  const dom=new JSDOM(html,{runScripts:'outside-only',url:'https://router.invalid/'}),w=dom.window,d=w.document,$=id=>d.getElementById(id),calls=[];
  w.eval(fs.readFileSync('router/luci/resources/nodes.js','utf8'));w.confirm=()=>true;
- let done;const api={esc:s=>s.replace(/[&<>"']/g,'_'),busy:()=>false,refresh:async()=>{},get:async()=>({prefix:'手机-',nodes:[{name:'前置-示例'}]}),post:async(mode,req)=>{calls.push([mode,req]);if(mode==='node_preview')return await new Promise(r=>done=r);return {message:'saved',backup:'private backup'}}};
+ let done;const api={esc:s=>s.replace(/[&<>"']/g,'_'),busy:()=>false,refresh:async()=>{},get:async()=>({prefix:'手机-',nodes:[{name:'前置-示例'},{name:'手机-01-示例',type:'socks5',server:'192.0.2.11',port:1080,udp:true,editable:true,managed:true,references:['设备示例'],authentication:'已填写（不回显）'}]}),post:async(mode,req)=>{calls.push([mode,req]);if(mode==='node_preview')return await new Promise(r=>done=r);return {message:'saved',backup:'private backup'}}};
  w.PhonePanelNodes.attach(api);await new Promise(r=>setImmediate(r));
  assert($('node-front').textContent.includes('前置-示例'));assert.equal($('node-password').type,'password');
  $('node-name').value='手机-测试';$('node-server').value='192.0.2.10';$('node-port').value='1080';$('node-password').value='fixture-only';
@@ -12,5 +12,11 @@ const html=fs.readFileSync('router/luci/view/phone_panel.htm','utf8').replace(/<
  waiting=$('node-form').onsubmit({preventDefault(){}});done({revision:'r',summary:{name:'手机-测试'},warning:'reload'});await waiting;
  assert(!$('node-apply').hidden);assert(!$('node-result').textContent.includes('fixture-only'),'password must not be displayed');
  await $('node-apply').onclick();assert.equal(calls.at(-1)[0],'node_apply');assert.equal(calls.at(-1)[1].revision,'r');assert.equal($('node-password').value,'');assert($('node-apply').hidden);
+ $('node-operation').value='update';$('node-operation').dispatchEvent(new w.Event('change'));
+ $('node-select').value='手机-01-示例';$('node-select').dispatchEvent(new w.Event('change'));
+ assert.equal($('node-server').value,'192.0.2.11');assert($('node-name').readOnly);assert.equal($('node-password').value,'');assert.match($('node-references').textContent,/设备示例/);
+ waiting=$('node-form').onsubmit({preventDefault(){}});assert.equal(calls.at(-1)[1].operation,'update');assert.equal(calls.at(-1)[1].original_name,'手机-01-示例');done({revision:'edit-r',summary:{operation:'update'},warning:''});await waiting;
+ $('node-operation').value='delete';$('node-operation').dispatchEvent(new w.Event('change'));assert($('node-server').disabled);assert($('node-apply').hidden);
+ dom.window.close();
  console.log('PASS: node dropdown, password masking, stale previews, confirmation and credential clearing');
 })().catch(e=>{console.error(e);process.exit(1)});

@@ -29,15 +29,8 @@ case "$ACTION" in
  initialize)
   [ "${2:-}" = --apply ] || { echo 'Use initialize --apply in a maintenance window; configure hooks per INSTALL.md first'; exit 2; }
   sh "$0" doctor
-  B=$(backup); echo "Recovery snapshot: $B"
-  CFG=$(uci -q get openclash.config.config_path)
-  ruby /etc/phone-dns/align-dns.rb "$CFG"
-  fw4 check
-  sing-box check -c /etc/phone-dns/config.json
+  ruby /etc/phone-dns/apply-engine.rb initialize
   /etc/init.d/phone-dns enable
-  /etc/init.d/openclash stop
-  /etc/init.d/firewall reload
-  /etc/init.d/openclash start
   /etc/init.d/phone-panel-monitor enable
   /etc/init.d/phone-panel-monitor restart
   ;;

@@ -13,7 +13,7 @@ cfg={'log'=>{'level'=>'warn'},'dns'=>{'servers'=>[],'rules'=>[],'independent_cac
 listeners=[]
 mapping.each do |g|
  id=g['id'];proxyport=g['socks_port']
- listeners<<{'name'=>"phone-dns-#{id}",'type'=>'socks','listen'=>'127.0.0.1','port'=>proxyport,'udp'=>false,'users'=>[],'proxy'=>g['node']}
+ listeners<<{'name'=>"phone-dns-#{id}",'type'=>'socks','listen'=>'127.0.0.1','port'=>proxyport,'udp'=>true,'users'=>[],'proxy'=>g['node']}
  cfg['outbounds']<<{'type'=>'socks','tag'=>"node-#{id}",'server'=>'127.0.0.1','server_port'=>proxyport,'version'=>'5'}
  [1,2].each do |n|
   tag="g#{id}-#{n}";port=PhoneSettings.port('internal_base')+id*10+n

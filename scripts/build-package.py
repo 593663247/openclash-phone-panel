@@ -40,7 +40,7 @@ def build(version,output):
  'router/openclash/phone-routing.sh':('etc/openclash/custom/phone-routing.sh',0o700),
  'router/nftables/90-phone-fixed-egress.nft':('etc/nftables.d/90-phone-fixed-egress.nft',0o600)}
  for source,(dest,mode) in pairs.items():payload[dest]=((ROOT/source).read_bytes(),mode)
- for name in ['mapping.yaml','devices.yaml','listeners.yaml']:payload['etc/phone-dns/'+name]=(b'--- []\n',0o600)
+ for name in ['mapping.yaml','devices.yaml','listeners.yaml','managed-nodes.yaml']:payload['etc/phone-dns/'+name]=(b'--- []\n',0o600)
  payload['etc/phone-dns/config.json']=(b'{}\n',0o600)
  payload['usr/share/phone-panel/deployed-commit']=(commit.encode()+b'\n',0o644)
  # Empty private working directories must exist before LuCI can accept requests.
@@ -81,7 +81,7 @@ if [ "${1:-}" = remove ]; then
 fi
 exit 0
 '''
- conffiles='\n'.join('/'+p for p in ['etc/config/phone_panel','etc/phone-dns/mapping.yaml','etc/phone-dns/devices.yaml','etc/phone-dns/listeners.yaml','etc/phone-dns/config.json','etc/nftables.d/90-phone-fixed-egress.nft'])+'\n'
+ conffiles='\n'.join('/'+p for p in ['etc/config/phone_panel','etc/phone-dns/mapping.yaml','etc/phone-dns/managed-nodes.yaml','etc/phone-dns/devices.yaml','etc/phone-dns/listeners.yaml','etc/phone-dns/config.json','etc/nftables.d/90-phone-fixed-egress.nft'])+'\n'
  controls={name:(data.encode(),0o755 if name in ['preinst','postinst','prerm'] else 0o644) for name,data in {'control':control,'preinst':pre,'postinst':post,'prerm':prerm,'conffiles':conffiles}.items()}
  ipkname=f'luci-app-phone-panel_{version}_all.ipk'
  ipk=archive({'debian-binary':(b'2.0\n',0o644),'control.tar.gz':(archive(controls),0o644),'data.tar.gz':(archive(payload),0o644)},sort=False)

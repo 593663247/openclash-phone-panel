@@ -17,7 +17,14 @@ def quiet(*args)
 end
 def run(*args)
  @commands<<args
- if (@fail_once==:validation && args.first=='/usr/bin/sing-box') || (@fail_once==:runtime && args[0,3]==['nft','get','element'])
+ return '123' if args==['pidof','clash']
+ if args.first=='netstat'
+  return YAML.load_file(BASE+'/mapping.yaml').flat_map{|g|[g['dns_port'],g['socks_port']]}.map{|p|"tcp 0 0 127.0.0.1:#{p} LISTEN"}.join("\n")
+ end
+ if args[0,3]==['nft','list','chain']
+  return args.last=='codex_phone_guard' ? 'drop' : YAML.load_file(BASE+'/mapping.yaml').flat_map{|g|g['ips']}.join(' ')
+ end
+ if (@fail_once==:validation && %w[/usr/bin/sing-box sing-box].include?(args.first)) || (@fail_once==:runtime && args[0,3]==['nft','get','element'])
   @fail_once=false;raise 'Injected application failure'
  end
  if args[0,2]==['uci','set']
@@ -41,6 +48,9 @@ fixture_directory do |root|
  ENV['PHONE_PANEL_TEST']='1';ENV['PHONE_PANEL_TEST_ROOT']=root
  require_relative '../router/phone-dns/device-manager'
  extend BatchRouterDouble
+ router=self
+ PhoneApply.define_singleton_method(:command){|*args|router.run(*args)}
+ PanelStore.define_singleton_method(:run){|*args|router.quiet(*args)}
  PhoneSettings.instance_variable_set(:@values,PhoneSettings.validate({}))
  ['/etc/openclash/config','/etc/config','/etc/nftables.d','/var/lock','/tmp','/root', '/etc/phone-dns/jobs'].each{|p|PanelStore.mkdir(router_path(p))}
  nodes=['手机-01-示例','手机-02-示例']

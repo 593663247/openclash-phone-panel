@@ -1,4 +1,5 @@
 require 'yaml'
+require_relative 'operations'
 # Persisted, allow-listed maintenance jobs. Never accept shell commands from HTTP.
 module PanelTasks
  DIR='/etc/phone-dns/tasks'
@@ -24,21 +25,22 @@ module PanelTasks
    return {'tasks'=>Dir.glob(DIR+'/*.yaml').sort.reverse.first(20).map{|f|YAML.safe_load(File.read(f)).reject{|k,_|k=='parameters'}}}
   end
   if mode=='start'
+   return PhoneOperations.start('initialize',{}) if arg=='initialize'
    raise 'Unsupported action' unless ACTIONS.key?(arg) || %w[upgrade restore_release].include?(arg)
    if arg=='upgrade';raise 'Invalid target version' unless parameters['target'].to_s.match?(/\A[a-f0-9]{40}\z/);end
    if arg=='restore_release';raise 'Invalid recovery ID' unless parameters['release'].to_s.match?(/\A\d{14}-[a-f0-9]{12}\z/);end
    id=Time.now.strftime('%Y%m%d%H%M%S')+'-'+File.binread('/dev/urandom',6).unpack1('H*')
-   write(id,{'id'=>id,'action'=>arg,'status'=>'queued','message'=>'等待执行','parameters'=>parameters})
-   pid=Process.spawn('/usr/bin/ruby',__FILE__,'worker',id,in:File::NULL,out:File::NULL,err:File::NULL,pgroup:true);Process.detach(pid)
+   write(id,{'id'=>id,'action'=>arg,'boot'=>PhoneOperations.boot,'status'=>'queued','message'=>'等待执行','parameters'=>parameters})
+   pid=Process.spawn('/usr/bin/ruby',__FILE__,'worker',id,in:File::NULL,out:File::NULL,err:File::NULL,pgroup:true);r=YAML.safe_load(File.read(DIR+'/'+id+'.yaml'));r['pid']=pid;write(id,r);Process.detach(pid)
    return {'ok'=>true,'id'=>id}
   end
   raise 'Invalid job ID' unless arg.to_s.match?(/\A\d{14}-[a-f0-9]{12}\z/)
   d=YAML.safe_load(File.read(DIR+'/'+arg+'.yaml'))
   lock=File.open('/var/lock/phone-panel.lock','w',0600)
   begin
-   release_action=%w[upgrade restore_release].include?(d['action'])
+   release_action=%w[upgrade restore_release initialize].include?(d['action'])
    raise '其他配置任务运行中，请稍后重试' unless release_action || lock.flock(File::LOCK_EX|File::LOCK_NB)
-   d.merge!('status'=>'running','message'=>'正在执行；请勿断电');write(arg,d)
+   d.merge!('pid'=>Process.pid,'boot'=>PhoneOperations.boot,'status'=>'running','message'=>'正在执行；请勿断电');write(arg,d)
    log=DIR+'/'+arg+'.log'
    args=case d['action']
     when 'upgrade';['/usr/bin/ruby','/etc/phone-dns/releases.rb','upgrade',d.fetch('parameters').fetch('target')]

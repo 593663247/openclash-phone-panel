@@ -1,4 +1,5 @@
 require_relative 'settings'
+require_relative 'node-registry'
 def ip_elements(ips)
  a=ips.map{|ip|ip.split('.').map(&:to_i).inject(0){|n,v|n*256+v}}.uniq.sort
  ranges=[];a.each{|n|if ranges.last && ranges.last[1]+1==n; ranges.last[1]=n;else;ranges<<[n,n];end}
@@ -10,6 +11,7 @@ base='/etc/phone-dns'
 lock=File.open('/var/lock/phone-dns-align.lock','w',0600)
 lock.flock(File::LOCK_EX)
 f=ARGV.fetch(0);cfg=YAML.load_file(f,aliases:true)
+before=cfg.to_yaml;PhoneNodeRegistry.merge(cfg);File.write(f,cfg.to_yaml) if before!=cfg.to_yaml
 snap_paths=(Dir.glob(base+'/*.yaml')+Dir.glob(base+'/group-*.conf')+[base+'/devices.yaml',base+'/import-status.yaml',base+'/listeners.yaml',base+'/config.json','/etc/config/dhcp','/etc/nftables.d/90-phone-fixed-egress.nft']).uniq
 snapshots=snap_paths.to_h{|p|[p,File.exist?(p) ? File.binread(p) : nil]}
 begin

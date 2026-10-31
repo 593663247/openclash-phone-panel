@@ -36,7 +36,7 @@ module PhoneStatus
    'dns_listening'=>sockets.match?(/127\.0\.0\.1:#{g['dns_port']}\s/),'socks_listening'=>sockets.match?(/127\.0\.0\.1:#{g['socks_port']}\s/),
    'binding_ok'=>listener && listener['proxy']==g['node'],'udp_enabled'=>node && node['udp']==true,
    'connections_available'=>connections_available,'connections'=>active.size,'udp_connections'=>active.count{|c|c.dig('metadata','network')=='udp'},
-   'phones'=>g['ips'].map{|ip|l=leases.find{|a|a[2]==ip};d=devices.find{|x|x['ip']==ip}||{};h=static_hosts.find{|x|x['ip']==ip}||{};{'ip'=>ip,'hostname'=>(d['name'] || (l ? l[3] : h['name'])),'mac'=>(d['mac'] || h['mac'] || (l ? l[1] : nil)),'lease_present'=>!l.nil?,'connections'=>active.count{|c|c.dig('metadata','sourceIP')==ip},'neighbor'=>neighbor_states[ip]}},
+   'phones'=>g['ips'].map{|ip|l=leases.find{|a|a[2]==ip};d=devices.find{|x|x['ip']==ip}||{};h=static_hosts.find{|x|x['ip']==ip}||{};{'ip'=>ip,'hostname'=>(d['name'] || (l ? l[3] : h['name'])),'mac'=>(d['mac'] || h['mac'] || (l ? l[1] : nil)),'lease_current_ip'=>leases.find{|lease|lease[1].downcase==(d['mac'] || h['mac'] || '').downcase}&.[](2),'lease_present'=>!l.nil?,'connections'=>active.count{|c|c.dig('metadata','sourceIP')==ip},'neighbor'=>neighbor_states[ip]}},
    'upload'=>active.sum{|c|c['upload'].to_i},'download'=>active.sum{|c|c['download'].to_i}}
  end
  nft=IO.popen(['nft','list','chain','inet','fw4','codex_phone_dns'], &:read)

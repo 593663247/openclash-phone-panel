@@ -20,3 +20,7 @@
 Open **Maintenance → Add SOCKS5 landing node**. Enter a prefixed node name, server, port, optional paired credentials, UDP preference and an optional existing concrete proxy as the dialer. Preview is read-only and redacts credentials. Confirmation backs up configuration, updates the OpenClash source, invalidates quick-start cache, restarts the core and checks the generated runtime node. Existing devices are not rebound.
 
 The node appears in device-binding selectors. Bind explicitly, then use DNS/egress diagnostics. Explicit UDP settings are preserved; enabled does not mean the provider or full chain supports UDP. Only node creation is implemented (no node edit/delete, no automatic subscription migration). Backups and diagnostics stay private on the router. Use a trusted LAN / HTTPS administration connection. Real paid-node connectivity and UDP have not been validated by fixture tests.
+
+## Update: editing, deletion and private persistence
+
+The maintenance page now also supports editing/deleting SOCKS5 nodes and direct per-node diagnostics. Blank passwords retain old authentication; advanced fields are preserved. Referenced nodes cannot be deleted. Nodes explicitly created/edited in this panel are privately persisted and merged, with conflict rejection. See [OPERATIONS.md](OPERATIONS.md) for current behavior; its node lifecycle description supersedes the initial create-only limitation above.

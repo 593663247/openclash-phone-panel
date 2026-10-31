@@ -32,6 +32,7 @@ jobs:
           luac5.1 -p router/luci/controller/phone_panel.lua
           luac5.1 -p router/luci/model/cbi/phone_panel_settings.lua
           luac5.1 -p router/phone-dns/probe-dns.lua
+          luac5.1 -p router/phone-dns/probe-udp.lua
       - name: Publication privacy gate
         run: python3 scripts/privacy_check.py
       - name: Isolated maintenance backup and restore
