@@ -16,12 +16,13 @@ async function run(){
   phones:[{ip:'192.168.1.101',mac:'02:11:22:33:44:55',hostname:'<img src=x onerror=alert(1)>',online_state:'active',online_evidence:'connection',last_seen:100,traffic:{available:true,rate_up:1234,rate_down:4321,today:{up:1,down:2},month:{up:10,down:20}}}],
   health:{exit_changed:true,baseline_ip:'203.0.113.1',exit_ip:'203.0.113.2',checks:2,failures:0,success_percent:100,history:[good],last:good}},
  {id:2,node:'手机-02-法国',region:'法国',dns_listening:false,socks_listening:true,binding_ok:true,phones:[{ip:'192.168.1.102',hostname:'Second',online_state:'unknown',traffic:{}}],health:{checks:0}}];
- const calls=[],jobs=[];let candidatePreviewResolve,delayBulk=false,ci=false;
+ const calls=[],jobs=[];let candidatePreviewResolve,delayBulk=false,ci=false,publishedTag='v1.1.2',publishedStatus='available';
  const current='a'.repeat(40),latest='b'.repeat(40);
- const versions={current,releases:[{id:'20261030120000-abcdef123456',status:'installed',from:current,at:100}],update:{can_upgrade:false}};
+ const versions={version:'1.1.0',current,releases:[{id:'20261030120000-abcdef123456',status:'installed',from:current,at:100}],update:{can_upgrade:false}};
  const api={esc,groups:()=>groups,busy:()=>false,refresh:async()=>{},watchJob:id=>jobs.push(id),
   get:async route=>{
    if(route==='versions')return versions;
+   if(route.startsWith('latest_release'))return {published_release:{status:publishedStatus,tag:publishedTag,checked_at:100}};
    if(route==='candidates')return {devices:[{ip:'192.168.1.103',mac:'02:11:22:33:44:77',name:'New device'}]};
    if(route.startsWith('probe?'))return good;
    if(route.startsWith('health?'))return {node:groups[0].node,health:{checks:2,failures:1,history:[good,{...good,at:200,dns_ok:false}],last:good}};
@@ -72,7 +73,9 @@ async function run(){
  await d.getElementById('pf-bulk-apply').onclick();
  assert.deepEqual(jobs,['20261030120000-123456abcdef']);
  await d.getElementById('pf-update-check').onclick();assert.equal(d.getElementById('pf-upgrade').disabled,true,'CI failure must block upgrade');
- ci=true;await d.getElementById('pf-update-check').onclick();assert.equal(d.getElementById('pf-upgrade').disabled,false);
+ assert.equal(d.getElementById('pf-latest-version').textContent,'v1.1.2');assert.match(d.getElementById('pf-latest-info').textContent,/发现新的发布版本/);
+ publishedStatus='unavailable';await d.getElementById('pf-update-check').onclick();assert.match(d.getElementById('pf-latest-version').textContent,/上次记录/);assert.match(d.getElementById('pf-latest-info').textContent,/查询失败/);assert.equal(d.getElementById('pf-upgrade').disabled,true,'a Release label must not bypass CI');
+ publishedStatus='available';publishedTag='v1.1.0';ci=true;await d.getElementById('pf-update-check').onclick();assert.match(d.getElementById('pf-latest-info').textContent,/与当前安装版本相同/);assert.equal(d.getElementById('pf-upgrade').disabled,false);
  d.getElementById('pf-upgrade').onclick();await settle();
  assert.equal(calls.at(-1).route,'upgrade');assert.equal(calls.at(-1).payload.target,latest);
  assert.equal(calls.at(-1).payload.confirm,'UPGRADE');

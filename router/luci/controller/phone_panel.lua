@@ -41,6 +41,7 @@ function index()
  entry({'admin','services','phone_panel','candidates'},call('feature_candidates')).leaf=true
  entry({'admin','services','phone_panel','health'},call('feature_health')).leaf=true
  entry({'admin','services','phone_panel','versions'},call('feature_versions')).leaf=true
+ entry({'admin','services','phone_panel','latest_release'},call('feature_latest_release')).leaf=true
  entry({'admin','services','phone_panel','bulk_preview'},post('bulk_preview')).leaf=true
  entry({'admin','services','phone_panel','bulk_apply'},post('bulk_apply')).leaf=true
  entry({'admin','services','phone_panel','ack'},post('feature_ack')).leaf=true
@@ -131,6 +132,7 @@ function feature_asset()
 end
 function feature_candidates() feature_json('candidates') end
 function feature_versions() feature_json('versions') end
+function feature_latest_release() feature_json('latest_release',require('luci.http').formvalue('refresh')=='1' and 'refresh' or nil) end
 function feature_health() feature_json('health',require('luci.http').formvalue('id') or '') end
 function bulk_preview() device_request('batch-preview') end
 function bulk_apply() device_request('batch-apply') end

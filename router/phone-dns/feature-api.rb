@@ -19,6 +19,7 @@ module PhoneFeatures
    g=group(arg);data=PhoneHealth.summary(g);data['history']=PhoneHealth.read(g).fetch('history',[])
    {'group'=>g['id'],'node'=>g['node'],'health'=>data}
   when 'versions';PhoneRelease.info
+  when 'latest_release';{'ok'=>true,'published_release'=>PhoneRelease.published_release(refresh:arg=='refresh')}
   else
    request=YAML.safe_load(File.read(arg),aliases:false)
    raise 'Invalid feature request' unless request.is_a?(Hash)

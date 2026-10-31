@@ -17,7 +17,7 @@ function matchGroup(g,filters){
 }
 function attach(api){
  const $=id=>document.getElementById(id),esc=api.esc;
- let snapshot=null,bulkPlan=null,bulkRevision=0,candidates=[],versionData=null,versionBusy=false;
+ let snapshot=null,bulkPlan=null,bulkRevision=0,candidates=[],versionData=null,versionBusy=false,publishedData=null,publishedLoading=false,publishedSequence=0;
  const seenTasks=new Set();
  function text(id,value){$(id).textContent=value}
  function filters(){return {search:$('pf-search').value.trim(),group:$('pf-group').value,region:$('pf-region').value,online:$('pf-online').value,health:$('pf-health').value}}
@@ -132,9 +132,21 @@ function attach(api){
   try{const data=await api.post('bulk_apply',bulkPlan);invalidateBulk();if(data.job)api.watchJob(data.job);message('pf-bulk-result',data.message||'已提交，请查看统一任务中心')}
   catch(e){message('pf-bulk-result',e)}finally{this.disabled=false}
  };
+ function paintPublished(){
+  const data=publishedData||versionData&&versionData.published_release,tag=data&&data.tag,valid=typeof tag==='string'&&/^v?\d+\.\d+\.\d+$/.test(tag);
+  text('pf-latest-version',valid?('v'+tag.replace(/^v/,'')+(data.status==='unavailable'?'（上次记录）':'')):publishedLoading?'正在查询…':data&&data.status==='unavailable'?'查询失败':'尚未检查');
+  $('pf-latest-link').hidden=!valid;if(valid)$('pf-latest-link').href='https://github.com/593663247/openclash-phone-panel/releases/tag/'+tag;
+  if(publishedLoading){text('pf-latest-info','正在读取 GitHub 最新正式发布…');return}
+  if(!data){text('pf-latest-info','打开页面后自动查询，也可点击检查 GitHub 更新。');return}
+  if(data.status==='unavailable'){text('pf-latest-info','查询失败，请稍后重试。'+(data.checked_at?' 上次成功检查：'+date(data.checked_at):''));return}
+  let comparison='';const installed=versionData&&versionData.version;
+  if(valid&&/^\d+\.\d+\.\d+$/.test(installed||'')){const a=tag.replace(/^v/,'').split('.').map(Number),b=installed.split('.').map(Number);let order=0;for(let i=0;i<3;i++){if(a[i]!==b[i]){order=a[i]>b[i]?1:-1;break}}comparison=order>0?'发现新的发布版本':order<0?'当前程序版本高于最新发布':'与当前安装版本相同'}
+  text('pf-latest-info',(comparison?comparison+' · ':'')+'检查时间：'+date(data.checked_at));
+ }
+ async function published(refresh=false){const sequence=++publishedSequence;publishedLoading=true;paintPublished();try{const response=await api.get('latest_release'+(refresh?'?refresh=1':''));if(sequence===publishedSequence)publishedData=response.published_release}catch(e){if(sequence===publishedSequence)publishedData={...(publishedData||versionData&&versionData.published_release||{}),status:'unavailable'}}finally{if(sequence===publishedSequence){publishedLoading=false;paintPublished()}}}
  function paintVersions(){
   if(!versionData)return;
-  const data=versionData,up=data.update||{};
+  const data=versionData,up=data.update||{};paintPublished();
   text('pf-version',data.version?'v'+data.version:'版本未设置');text('pf-version-source','源码标记：'+(data.current?data.current.slice(0,12):'未设置'));
   text('pf-update-message',up.message||'点击检查 GitHub 更新；不会自动安装或改动网络。');
   $('pf-upgrade').disabled=versionBusy||!up.can_upgrade;
@@ -146,9 +158,9 @@ function attach(api){
  }
  async function versions(){try{versionData=await api.get('versions');paintVersions()}catch(e){message('pf-update-message',e)}}
  $('pf-update-check').onclick=async function(){
-  if(versionBusy)return;versionBusy=true;this.disabled=true;paintVersions();text('pf-update-message','正在核对固定仓库 main、可快进关系与 CI…');
+  if(versionBusy)return;const releaseRead=published(true);versionBusy=true;this.disabled=true;paintVersions();text('pf-update-message','正在核对固定仓库 main、可快进关系与 CI…');
   try{const data=await api.post('check_update',{});versionData={...(versionData||{}),current:data.current,update:data};paintVersions()}
-  catch(e){versionData={...(versionData||{}),update:{can_upgrade:false,message:e.message}};message('pf-update-message',e)}finally{versionBusy=false;this.disabled=false;paintVersions()}
+  catch(e){versionData={...(versionData||{}),update:{can_upgrade:false,message:e.message}};message('pf-update-message',e)}finally{await releaseRead;versionBusy=false;this.disabled=false;paintVersions()}
  };
  async function releaseTask(action,payload,warning){
   if(versionBusy||api.busy()||!root.confirm(warning))return;versionBusy=true;paintVersions();
@@ -161,7 +173,7 @@ function attach(api){
  ['pf-search','pf-group','pf-region','pf-online','pf-health'].forEach(id=>{$(id).oninput=applyFilters;$(id).onchange=applyFilters});
  $('pf-filter-reset').onclick=()=>{['pf-search','pf-group','pf-region','pf-online','pf-health'].forEach(id=>$(id).value='');applyFilters()};
  $('pf-diagnostic-close').onclick=()=>{$('pf-diagnostic').hidden=true};
- if($('pp').classList.contains('maintenance-page'))versions();
+ if($('pp').classList.contains('maintenance-page')){versions();published()}
  function syncTasks(tasks){
   const changed=(tasks||[]).filter(t=>['upgrade','restore_release'].includes(t.action)&&['done','failed'].includes(t.status)&&!seenTasks.has(t.id));
   changed.forEach(t=>seenTasks.add(t.id));if(changed.length)versions();

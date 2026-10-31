@@ -11,13 +11,27 @@ module PhoneRelease
   File.file?(path) ? File.read(path).strip : ''
  end
  def self.root;PanelStore.path('/root/phone-panel-releases');end
- def self.http_json(path)
+ def self.http_json(path,timeout:20)
   raise 'Invalid repository API path' unless path.start_with?('/') && !path.include?("\n")
-  body=PanelStore.run('curl','--noproxy','', '-fsS','--proto','=https','--connect-timeout','5','--max-time','20',
+  body=PanelStore.run('curl','--noproxy','', '-fsS','--proto','=https','--connect-timeout','5','--max-time',timeout.to_s,
    '-H','Accept: application/vnd.github+json','-H','User-Agent: OpenClash-Phone-Panel',"https://api.github.com/repos/#{REPOSITORY}#{path}")
   value=YAML.safe_load(body)
   raise 'Invalid GitHub response' unless value.is_a?(Hash)
   value
+ end
+ def self.published_release(refresh:false)
+  file=PanelStore.state+'/published-release.yaml';cached=PanelStore.read(file,{});now=Time.now.to_i
+  age=now-cached.fetch('checked_at',0).to_i
+  retry_age=now-cached.fetch('attempted_at',0).to_i
+  return cached if !refresh && ((cached['status']=='available'&&age.between?(0,3599)) || (cached['status']=='unavailable'&&retry_age.between?(0,59)))
+  begin
+   release=http_json('/releases/latest',timeout:10);tag=release['tag_name'].to_s
+   raise 'Invalid published release' unless tag.match?(/\Av?\d+\.\d+\.\d+\z/) && release['draft']==false && release['prerelease']==false
+   result={'status'=>'available','tag'=>tag,'checked_at'=>now,'attempted_at'=>now}
+  rescue
+   result=cached.merge('status'=>'unavailable','attempted_at'=>now,'message'=>'暂时无法读取 GitHub 最新发布，请稍后重试。')
+  end
+  PanelStore.write(file,result);result
  end
  def self.check
   latest=http_json('/commits/main')['sha'].to_s
@@ -53,7 +67,7 @@ module PhoneRelease
   version_path=PanelStore.path('/usr/share/phone-panel/VERSION')
   version=File.file?(version_path) ? File.read(version_path).strip : nil
   version=nil unless version.to_s.match?(/\A[0-9]+\.[0-9]+\.[0-9]+\z/)
-  {'version'=>version,'current'=>current,'repository'=>REPOSITORY,'update'=>cache,'releases'=>records}
+  {'version'=>version,'current'=>current,'repository'=>REPOSITORY,'update'=>cache,'published_release'=>PanelStore.read(PanelStore.state+'/published-release.yaml',{}),'releases'=>records}
  end
  # A bounded TAR reader: no links, devices, traversal, arbitrary archive roots or unbounded expansion.
  def self.unpack_stream(io,destination)

@@ -1,5 +1,13 @@
 # 更新日志 / Changelog
 
+## [1.1.1] — 2026-10-31
+
+- Display the installed version alongside the actual latest published GitHub Release tag, comparison and check time, with a link to release notes.
+- Query release information separately when Maintenance opens; cache successful lookups for one hour, throttle failed automatic retries for one minute, and force refresh when checking updates.
+- Preserve failed-query results as explicitly labelled previous records; never infer a latest version from the installed version, main SHA or a failed request.
+- Keep main-branch fast-forward, CI and local preflight upgrade gates unchanged, and explain the distinction from formal Release information.
+- Add backend and DOM regressions for cache/manual refresh, failures, draft/prerelease/tag validation and unchanged CI gating.
+
 ## [1.1.0] — 2026-10-31
 
 - Replace persistent device/node forms with searchable lists and focused native modal editors. Show ten entries initially, with explicit load-more controls.
