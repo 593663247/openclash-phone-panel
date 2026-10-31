@@ -18,7 +18,7 @@ function matchGroup(g,filters){
 function attach(api){
  const $=id=>document.getElementById(id),esc=api.esc;
  let snapshot=null,bulkPlan=null,bulkRevision=0,candidates=[],versionData=null,versionBusy=false,publishedData=null,publishedLoading=false,publishedSequence=0;
- const seenTasks=new Set();
+ const seenTasks=new Set(),seenRecoveries=new Set();
  function text(id,value){$(id).textContent=value}
  function filters(){return {search:$('pf-search').value.trim(),group:$('pf-group').value,region:$('pf-region').value,online:$('pf-online').value,health:$('pf-health').value}}
  function options(element,values,first){const selected=element.value;element.innerHTML='<option value="">'+first+'</option>'+values.map(([value,label])=>'<option value="'+esc(value)+'">'+esc(label)+'</option>').join('');element.value=values.some(([v])=>String(v)===selected)?selected:''}
@@ -152,10 +152,11 @@ function attach(api){
   $('pf-update-check').disabled=versionBusy||api.busy();
   $('pf-upgrade').disabled=versionBusy||api.busy()||!up.can_upgrade;
   const pre=up.preflight; $('upgrade-preflight').innerHTML=pre?'<p>升级预检查 · '+esc(date(pre.at))+'</p>'+pre.checks.map(c=>'<span class="console-check '+(c.ok?'':'bad')+'">'+esc((c.ok?'✓ ':'! ')+c.name+' · '+c.detail)+'</span>').join(''):'';
-  $('pf-restore').disabled=versionBusy||!(data.releases||[]).some(r=>(r.status==='installed'||r.recoverable)&&/^[a-f0-9]{40}$/.test(r.from||''));
+  $('pf-restore').disabled=versionBusy||api.busy()||!(data.releases||[]).some(r=>(r.status==='installed'||r.recoverable)&&/^[a-f0-9]{40}$/.test(r.from||''));
   const selected=$('pf-release').value;
   $('pf-release').innerHTML=(data.releases||[]).filter(r=>(r.status==='installed'||r.recoverable)&&/^[a-f0-9]{40}$/.test(r.from||'')).map(r=>'<option value="'+esc(r.id)+'">'+esc((r.recoverable?'未完成升级 · 恢复前版本：':'')+date(r.at)+' → '+r.from.slice(0,12))+'</option>').join('');
   if([...$('pf-release').options].some(o=>o.value===selected))$('pf-release').value=selected;
+  const pending=(data.releases||[]).find(r=>r.recoverable&&!seenRecoveries.has(r.id));if(pending){seenRecoveries.add(pending.id);$('pf-release').value=pending.id;$('pf-release').closest('details').open=true}
  }
  async function versions(){try{versionData=await api.get('versions');paintVersions()}catch(e){message('pf-update-message',e)}}
  $('pf-update-check').onclick=async function(){

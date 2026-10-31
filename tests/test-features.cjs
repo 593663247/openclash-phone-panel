@@ -87,7 +87,7 @@ async function run(){
  backgroundCheck=true;await d.getElementById('pf-update-check').onclick();assert(operations.includes('20261030120000-fedcba123456'));assert.match(d.getElementById('pf-update-message').textContent,/后台核对/);assert(d.getElementById('pf-upgrade').disabled);
  versions.releases.unshift({id:'20261031120000-123456abcdef',status:'installing',recoverable:true,from:current,at:200});
  versions.update={can_upgrade:false,message:'上次程序升级未完成，请先恢复'};d.dispatchEvent(new w.Event('phone-panel-operation-complete'));await settle();
- assert.match(d.getElementById('pf-release').textContent,/未完成升级/);assert.equal(d.getElementById('pf-restore').disabled,false);assert.match(d.getElementById('pf-update-message').textContent,/未完成/);
+ assert.match(d.getElementById('pf-release').textContent,/未完成升级/);assert(d.getElementById('pf-release').closest('details').open);assert.equal(d.getElementById('pf-restore').disabled,false);assert.match(d.getElementById('pf-update-message').textContent,/未完成/);
  dom.window.close();
  console.log('PASS: real DOM filters, escaping, alerts, diagnostics, stale bulk plans and update/restore confirmations');
 }

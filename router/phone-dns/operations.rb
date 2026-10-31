@@ -14,7 +14,7 @@ module PhoneOperations
  def self.reconcile(record,current_boot=boot)
   return record unless %w[queued running].include?(record['status'])
   if record['boot']!=current_boot || (record['pid'] && (!alive?(record['pid'])||(record['process_token']&&record['process_token']!=PhoneBindings.process_token(record['pid'])))) || (!record['pid'] && Time.now.to_i-record['at'].to_i>30)
-   record.merge!('status'=>'interrupted','stage'=>'执行已中断','message'=>'任务进程退出或路由器重启；未自动重试。检查设备状态和备份后再操作。','recovery_required'=>record['status']=='running')
+   record.merge!('status'=>'interrupted','stage'=>'执行已中断','message'=>'任务进程退出或路由器重启；未自动重试。检查设备状态和备份后再操作。','recovery_required'=>record['status']=='running'&&record['action']!='check_update')
   end
   record
  end
@@ -22,7 +22,14 @@ module PhoneOperations
   PanelStore.mkdir(directory)
   Dir.glob(directory+'/*.json').sort.reverse.first(50).map do |p|
    record=PanelStore.read(p,{});next if record.empty?
-   old=record['status'];reconcile(record);PanelStore.write(p,record) if record['status']!=old
+   old=record['status'];reconcile(record)
+   if record['status']!=old
+    PanelStore.write(p,record)
+    if record['action']=='check_update'
+     cache=PanelStore.read(PanelStore.state+'/update-cache.yaml',{})
+     PanelStore.write(PanelStore.state+'/update-cache.yaml',cache.merge('can_upgrade'=>false,'message'=>'上次检查已中断，请重新检查正式发布'))
+    end
+   end
    record.reject{|k,_|%w[request log pid boot process_token].include?(k)}
   end.compact
  end
@@ -88,7 +95,7 @@ module PhoneOperations
    'backup'=>result['backup'],'program_backup'=>result['program_backup']||record['program_backup'],'files_restored'=>result['files_restored'],'runtime_restored'=>result['runtime_restored'],'recovery_required'=>result['recovery_required'],'rollback_error'=>result['rollback_error'],'checks'=>result['checks'],'finished_at'=>Time.now.to_i)
   PanelStore.write(path,record)
  rescue=>e
-  record=path ? PanelStore.read(path,record || {'id'=>id}) : {'id'=>id};record.merge!('status'=>'interrupted','recovery_required'=>true,'stage'=>'任务异常','message'=>e.class.to_s+'：后台任务未正常返回，请核对运行状态与备份，切勿重复提交');PanelStore.write(path,record) if path
+  record=path ? PanelStore.read(path,record || {'id'=>id}) : {'id'=>id};record.merge!('status'=>'interrupted','recovery_required'=>record['action']!='check_update','stage'=>'任务异常','message'=>e.class.to_s+'：后台任务未正常返回，请核对运行状态与备份，切勿重复提交');PanelStore.write(path,record) if path
  ensure
   File.delete(request) if request && File.file?(request)
  end
