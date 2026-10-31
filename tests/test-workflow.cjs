@@ -5,7 +5,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),{JSDOM}=require
  $('pp').className='maintenance-page';
  const backups=Array.from({length:8},(_,i)=>({id:'/root/phone-panel-transactions/fixture-'+i,bytes:1024,at:100+i,recyclable:i>2,protection_reason:i<=2?'最近三条保护':null}));
  let previewResolve,previewPayload;
- let records=[],refreshes=0;const api={esc:s=>String(s??'').replace(/[&<>"']/g,'_'),get:async route=>route==='maintenance_health'?{items:backups,count:8,total_bytes:8192}:({operations:records}),refresh:async()=>{refreshes++},post:async(route,payload)=>{if(route==='backup_preview'){previewPayload=payload;return new Promise(resolve=>previewResolve=()=>resolve({revision:'fixture',items:[],warning:'fixture'}))}return {operation_id:'example'}}};
+ let records=[],refreshes=0,submitBusy=false;const api={editorBusy:()=>submitBusy,esc:s=>String(s??'').replace(/[&<>"']/g,'_'),get:async route=>route==='maintenance_health'?{items:backups,count:8,total_bytes:8192}:({operations:records}),refresh:async()=>{refreshes++},post:async(route,payload)=>{if(route==='backup_preview'){previewPayload=payload;return new Promise(resolve=>previewResolve=()=>resolve({revision:'fixture',items:[],warning:'fixture'}))}return {operation_id:'example'}}};
  const flow=w.PhonePanelWorkflow.attach(api);await new Promise(r=>setImmediate(r));
  assert.equal($('operation-panel').open,false);assert.equal($('backup-panel').open,false);
  assert.equal($('backup-items').querySelectorAll('tbody tr').length,5);assert.match($('backup-items').textContent,/最近三条保护/);assert.match($('backup-total').textContent,/可回收 5 条/);
@@ -14,7 +14,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),{JSDOM}=require
  const pending=$('backup-preview').onclick();assert.equal(previewPayload.ids.length,1);selectBackup($('backup-items').querySelectorAll('[data-backup]')[4]);previewResolve();await pending;assert.equal($('backup-recycle').hidden,true,'late preview must not enable stale recycling');
  flow.update({groups:[{id:1,node:'手机-01-示例',health:{exit_ip:'192.0.2.10'},phones:[{ip:'192.168.1.113',hostname:'device',mac:'02:11:22:33:44:55',lease_current_ip:'192.168.1.193'}]}]});
  $('edit-device').value='192.168.1.113';$('edit-device').onchange();assert.equal($('edit-ip').value,'192.168.1.113');assert.equal($('edit-name').value,'device');assert.match($('edit-device-info').textContent,/等待重连 Wi-Fi/);assert.match($('edit-device-info').textContent,/192\.0\.2\.10/);
- const row=$('managed-device-rows').querySelector('[data-device-edit]');assert(row);row.click();assert($('device-dialog').open);assert.match($('device-dialog-title').textContent,/device/);assert.equal($('edit-ip').value,'192.168.1.113');
+ const row=$('managed-device-rows').querySelector('[data-device-edit]');assert(row);submitBusy=true;row.click();assert(!$('device-dialog').open,'a pending submission must not open a new editor');submitBusy=false;row.click();assert($('device-dialog').open);assert.match($('device-dialog-title').textContent,/device/);assert.equal($('edit-ip').value,'192.168.1.113');
  $('edit-name').value='new-name';$('edit-name').dispatchEvent(new w.Event('input'));assert.match($('edit-change').textContent,/device → new-name/);
  flow.update({groups:[{id:1,node:'手机-01-示例',phones:[{ip:'192.168.1.113',hostname:'device',mac:'02:11:22:33:44:55'}]}]});assert.equal($('edit-name').value,'new-name','status refresh must not overwrite an open draft');
  $('device-dialog-close').click();assert(!$('device-dialog').open);assert($('edit-apply').hidden);
