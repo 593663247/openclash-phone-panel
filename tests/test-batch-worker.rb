@@ -53,6 +53,7 @@ fixture_directory do |root|
  require_relative '../router/phone-dns/device-manager'
  extend BatchRouterDouble
  router=self
+ PhoneApply.define_singleton_method(:source){|**_|router.source_path}
  PhoneApply.define_singleton_method(:command){|*args|router.run(*args)}
  PanelStore.define_singleton_method(:run){|*args|router.quiet(*args)}
  PhoneBindings.define_singleton_method(:guard){|document=PhoneBindings.read|true}

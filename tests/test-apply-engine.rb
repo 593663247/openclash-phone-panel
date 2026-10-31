@@ -5,6 +5,7 @@ fixture_directory do |root|
  ENV['PHONE_PANEL_TEST']='1';ENV['PHONE_PANEL_TEST_ROOT']=root
  %w[/etc/openclash/config /etc/phone-dns /etc/config /etc/nftables.d /var/lock /tmp /root].each{|p|PanelStore.mkdir(PanelStore.path(p))}
  source=PanelStore.path('/etc/openclash/config/source.yaml');runtime=PanelStore.path('/etc/openclash/source.yaml')
+ PhoneApply.define_singleton_method(:source){|**_|source}
  cfg={'rules'=>['SRC-IP-CIDR,192.168.1.101/32,手机-01-示例'],'proxies'=>[],'sniffer'=>{'skip-src-address'=>['192.168.1.101/32']}}
  PanelStore.define_singleton_method(:run){|*args|''}
  [nil,'','stale'].each do |token|

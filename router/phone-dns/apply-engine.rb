@@ -48,6 +48,7 @@ module PhoneApply
  end
  def self.verify(path)
   phase('验收核心、绑定、DNS 监听和防直连')
+  raise '应用过程中活动源配置已切换，请重新检查' unless self.source==path
   raise '核心未运行' if command('pidof','clash').strip.empty?
   source=YAML.safe_load(File.binread(path),aliases:true)
   runtime=YAML.safe_load(File.binread(self.path('/etc/openclash/'+File.basename(path))),aliases:true)
@@ -95,6 +96,7 @@ module PhoneApply
   [dir,snapshots]
  end
  def self.checkpoint(source)
+  raise '记录快照时活动源配置已切换' unless self.source==source
   files=config_files(source);fingerprint=Digest::SHA256.hexdigest(files.sort.map{|p|p.b+"\0".b+(File.file?(p) ? File.binread(p) : ''.b)}.join("\0".b))
   old=PanelStore.read(PanelStore.state+'/bindings-last-good.yaml',{})
   old_manifest=self.path(old.fetch('backup',''))+'/manifest.json'

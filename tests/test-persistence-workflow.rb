@@ -75,6 +75,7 @@ fixture_directory do |root|
  PhoneApply.define_singleton_method(:source){|**options|raise 'corrupt config selection' if File.binread(selected)=='broken';old_source_method.call(**options)}
  File.binwrite(selected,'broken');assert(PhoneApply.restore(saved_good)['ok'],'a complete snapshot must recover invalid configuration selection')
  assert(PhoneBindings.read['devices'].first['mac']==mac)
+ rejects('runtime acceptance must not validate an inactive source'){PhoneApply.verify(source_b)}
  base={'proxies'=>[],'rules'=>['DOMAIN,example.net,DIRECT','MATCH,DIRECT'],'sniffer'=>{}}
  File.binwrite(source,base.to_yaml);File.binwrite(runtime,base.to_yaml)
  PanelStore.write(PanelStore.path('/etc/phone-dns/mapping.yaml'),[PhoneSettings.group(7,a)])
