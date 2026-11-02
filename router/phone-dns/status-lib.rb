@@ -15,7 +15,8 @@ module PhoneStatus
   id+=1;mapping<<{'id'=>id,'node'=>name,'ips'=>[],'dns_port'=>PhoneSettings.port('dns_base')+id,'socks_port'=>PhoneSettings.port('socks_base')+id}
  end
  raise 'Too many phone groups' if mapping.size>PhoneSettings.port('max_groups')
- neighbor_states=PhoneTelemetry.neighbors(IO.popen(['ip','neigh','show','dev',PhoneSettings['bridge']],err:File::NULL,&:read))
+ neighbor_text=IO.popen(['ip','neigh','show','dev',PhoneSettings['bridge']],err:File::NULL,&:read)
+ neighbor_states=PhoneTelemetry.neighbors(neighbor_text)
  static_hosts=PhoneImport.hosts
  sockets=IO.popen(['netstat','-ln'], &:read)
  leases=PhoneSettings.active_leases(File.readlines('/tmp/dhcp.leases')) rescue []
@@ -43,9 +44,11 @@ module PhoneStatus
  guard=IO.popen(['nft','list','chain','inet','fw4','codex_phone_guard'], &:read)
  lines=File.readlines('/tmp/openclash.log').last(600).filter_map{|l|PhoneSettings.warning_summary(l,managed_ips)}.last(12) rescue []
  imports=File.exist?('/etc/phone-dns/import-status.yaml') ? YAML.load_file('/etc/phone-dns/import-status.yaml') : {}
- monitor=PhoneTelemetry.decorate(groups)
+ other=PhoneTelemetry.lan_devices(leases,static_hosts,neighbor_text,groups.flat_map{|g|g['phones']})
+ all_observed=groups+[{'node'=>'其他局域网设备','phones'=>other}]
+ monitor=PhoneTelemetry.decorate(all_observed)
  groups.each{|g|g['health']=PhoneHealth.summary(g)}
- result={'monitor'=>monitor,'connections_available'=>connections_available,'settings'=>PhoneSettings.values,'pending_imports'=>imports.fetch('pending',[]),'time'=>Time.now.strftime('%Y-%m-%d %H:%M:%S %z'),'groups'=>groups,'dns_redirect_ready'=>mapping.reject{|g|g['ips'].empty?}.all?{|g|nft.include?(":#{g['dns_port']}")},
+ result={'other_devices'=>other,'other_devices_limit'=>256,'monitor'=>monitor,'connections_available'=>connections_available,'settings'=>PhoneSettings.values,'pending_imports'=>imports.fetch('pending',[]),'time'=>Time.now.strftime('%Y-%m-%d %H:%M:%S %z'),'groups'=>groups,'dns_redirect_ready'=>mapping.reject{|g|g['ips'].empty?}.all?{|g|nft.include?(":#{g['dns_port']}")},
  'guard_ready'=>guard.include?('drop'),'logs'=>lines,'scope'=>managed_ips.join(', '),'device_count'=>managed_ips.size,'read_only'=>false}
  result
  rescue =>e

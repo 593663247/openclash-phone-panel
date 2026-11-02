@@ -40,6 +40,20 @@ function attach(api){
   $('pf-device-rows').innerHTML=rows.join('')||'<tr><td colspan="6">没有符合条件的设备。</td></tr>';
   text('pf-result-count',rows.length+' 台设备');
  }
+ let lanLimit=10;
+ function lanTable(){
+  if(!snapshot||!$('pf-lan-rows'))return;
+  const search=$('pf-lan-search').value.trim().toLowerCase(),sort=$('pf-lan-sort').value;
+  const rows=(snapshot.other_devices||[]).filter(p=>[p.hostname,p.ip,p.mac].join(' ').toLowerCase().includes(search));
+  const sum=p=>{const t=p.traffic||{};return sort==='today'&&t.today_available?(t.today.up||0)+(t.today.down||0):sort==='rate'&&t.available?(t.rate_up||0)+(t.rate_down||0):0};
+  const ipNumber=p=>p.ip.split('.').reduce((n,v)=>n*256+Number(v),0);
+  rows.sort((a,b)=>sum(b)-sum(a)||ipNumber(a)-ipNumber(b));
+  const rate=t=>t.available&&Number.isFinite(t.rate_up)&&Number.isFinite(t.rate_down)?bytes(t.rate_up)+'/s ↑ / '+bytes(t.rate_down)+'/s ↓':'等待采样';
+  const total=(t,key)=>t[key+'_available']?bytes((t[key]||{}).up)+' ↑ / '+bytes((t[key]||{}).down)+' ↓':'尚未累计';
+  $('pf-lan-rows').innerHTML=rows.slice(0,lanLimit).map(p=>{const t=p.traffic||{};return '<tr><td data-label="设备 / IP"><strong>'+esc(p.hostname||'未命名设备')+'</strong><small>'+esc(p.ip)+'</small></td><td data-label="在线状态"><span class="pf-state pf-'+esc(p.online_state||'unknown')+'">'+esc(onlineText[p.online_state]||onlineText.unknown)+'</span></td><td data-label="上传 / 下载速率">'+esc(rate(t))+'</td><td data-label="今日上传 / 下载">'+esc(total(t,'today'))+'</td><td data-label="本月上传 / 下载">'+esc(total(t,'month'))+'</td><td data-label="识别信息"><small>'+esc(p.mac)+'<br>'+esc(p.source||'')+'<br>最近观察：'+esc(date(p.last_seen))+'</small></td></tr>'}).join('')||'<tr><td colspan="6">未发现符合条件的其他设备；只显示当前配置网段内可确认身份的设备。</td></tr>';
+  text('pf-lan-count',rows.length+' 台设备');$('pf-lan-more').hidden=rows.length<=lanLimit;
+ }
+ if($('pf-lan-search')){$('pf-lan-search').oninput=()=>{lanLimit=10;lanTable()};$('pf-lan-sort').onchange=()=>{lanLimit=10;lanTable()};$('pf-lan-more').onclick=()=>{lanLimit+=10;lanTable()}}
  function applyFilters(){
   if(!snapshot)return;
   const f=filters(),extra=[f.region,f.online,f.health].filter(Boolean).length;text('pf-filter-summary','更多筛选'+(extra?'（'+extra+'项）':''));
@@ -72,7 +86,7 @@ function attach(api){
   });
  }
  function update(data){
-  const previous=snapshot&&JSON.stringify(snapshot.groups.map(g=>[g.id,g.node]));snapshot=data;
+  const previous=snapshot&&JSON.stringify(snapshot.groups.map(g=>[g.id,g.node]));snapshot=data;lanTable();
   const catalog=JSON.stringify(data.groups.map(g=>[g.id,g.node]));
   options($('pf-group'),data.groups.map(g=>[String(g.id),g.node]),'全部节点');
   options($('pf-region'),[...new Set(data.groups.map(g=>g.region||'未分类'))].sort().map(x=>[x,x]),'全部地区标签');

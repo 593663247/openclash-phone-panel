@@ -5,7 +5,7 @@ module PhoneMonitor
  def self.sample(state,now=Time.now.to_i)
   status=PhoneStatus.collect
   raise 'Router status unavailable' if status['error']
-  phones=status['groups'].flat_map{|g|g['phones']}
+  phones=status['groups'].flat_map{|g|g['phones']}+status.fetch('other_devices',[])
   ips=phones.map{|p|p['ip']}.uniq.sort
   signature=[PhoneSettings['bridge'],ips]
   counters=PhoneCounters.read

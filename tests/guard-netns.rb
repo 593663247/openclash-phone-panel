@@ -1,6 +1,7 @@
 # Run only inside a disposable network namespace, never against the host firewall.
 require_relative 'support'
 require_relative '../router/phone-dns/binding-registry'
+require_relative '../router/phone-dns/telemetry'
 raise 'Explicit isolated nft test required' unless ENV['PHONE_PANEL_NFT_TEST']=='1'
 PhoneSettings.instance_variable_set(:@values,PhoneSettings.validate({}))
 fixture_directory do |root|
@@ -19,5 +20,10 @@ fixture_directory do |root|
  assert(PanelStore.run('nft','list','table','inet','phone_panel_persistent').include?(mac),'missing desired state must not discard saved protection')
  PhoneBindings.guard(doc.merge('revision'=>2,'devices'=>[]))
  assert(!PanelStore.run('nft','list','table','inet','phone_panel_persistent').include?(mac),'explicit device removal releases its independent protection')
+ PhoneCounters.sync([ip,'192.168.1.120'])
+ counters=PhoneCounters.read;assert(counters.keys.sort==[ip,'192.168.1.120'].sort,'other LAN device counters must install on the actual kernel')
+ stats=PanelStore.run('nft','list','table','inet',PhoneCounters::TABLE)
+ assert(!stats.match?(/\bdrop\b|\bredirect\b|\btproxy\b/),'observing unbound devices must never change routing policy')
+ PhoneCounters.sync([ip]);assert(!PhoneCounters.read.key?('192.168.1.120'),'removed observations must release their counters')
 end
 puts 'PASS: real isolated nft syntax, idempotent apply, fw4 replacement, reboot fallback and explicit guard removal'

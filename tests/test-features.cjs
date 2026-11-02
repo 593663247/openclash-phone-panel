@@ -88,6 +88,12 @@ async function run(){
  versions.releases.unshift({id:'20261031120000-123456abcdef',status:'installing',recoverable:true,from:current,at:200});
  versions.update={can_upgrade:false,message:'上次程序升级未完成，请先恢复'};d.dispatchEvent(new w.Event('phone-panel-operation-complete'));await settle();
  assert.match(d.getElementById('pf-release').textContent,/未完成升级/);assert(d.getElementById('pf-release').closest('details').open);assert.equal(d.getElementById('pf-restore').disabled,false);assert.match(d.getElementById('pf-update-message').textContent,/未完成/);
+ const lan=Array.from({length:12},(_,i)=>({ip:'192.168.1.'+(150+i),hostname:i===0?'<img src=x>':'laptop-'+i,mac:'02:11:22:33:44:'+String(i+10),online_state:'unknown',source:'DHCP 租约',traffic:{available:true,rate_up:i,rate_down:2,today_available:true,month_available:true,today:{up:i*100,down:200},month:{up:300,down:400}}}));
+ ui.update({groups,other_devices:lan,monitor:{fresh:true}});
+ assert.equal(d.querySelectorAll('#pf-lan-rows tr').length,10);assert.equal(d.querySelector('#pf-lan-rows img'),null,'LAN names must be escaped');
+ d.getElementById('pf-lan-more').click();assert.equal(d.querySelectorAll('#pf-lan-rows tr').length,12);
+ d.getElementById('pf-lan-search').value='laptop-11';d.getElementById('pf-lan-search').dispatchEvent(new w.Event('input'));assert.equal(d.querySelectorAll('#pf-lan-rows tr').length,1);assert.match(d.getElementById('pf-lan-rows').textContent,/192.168.1.161/);
+ ui.update({groups,other_devices:lan,monitor:{fresh:true}});assert.equal(d.getElementById('pf-lan-search').value,'laptop-11','status refresh preserves the LAN filter');
  dom.window.close();
  console.log('PASS: real DOM filters, escaping, alerts, diagnostics, stale bulk plans and update/restore confirmations');
 }

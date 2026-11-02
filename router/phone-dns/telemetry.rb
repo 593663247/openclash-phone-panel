@@ -20,6 +20,29 @@ module PhoneTelemetry
   return ['offline','邻居探测失败',last_seen] if %w[FAILED INCOMPLETE].include?(neighbor)
   ['unknown','未确认在线',last_seen]
  end
+ # Observe other LAN devices without creating proxy bindings or DHCP entries.
+ def self.lan_devices(leases,hosts,neighbors,managed)
+  excluded_ips=managed.map{|p|p['ip']};excluded_macs=managed.map{|p|p['mac'].to_s.downcase}.reject(&:empty?)
+  active=PhoneSettings.active_leases(leases)
+  rows=active.map{|l|{'ip'=>l[2],'mac'=>l[1].downcase,'hostname'=>l[3],'source'=>'DHCP 租约'}}
+  hosts.each do |h|
+   macs=h.fetch('mac','').downcase.split;next unless macs.size==1
+   next if active.any?{|l|l[1].downcase==macs.first&&l[2]!=h['ip']}
+   rows<<{'ip'=>h['ip'],'mac'=>macs.first,'hostname'=>h['name'],'source'=>'静态租约'}
+  end
+  neighbors.each_line do |line|
+   fields=line.split;index=fields.index('lladdr');next unless index
+   rows<<{'ip'=>fields.first,'mac'=>fields[index+1].to_s.downcase,'source'=>'邻居表'}
+  end
+  states=self.neighbors(neighbors)
+  rows=rows.select{|r|PhoneSettings.usable?(r['ip'])&&r['mac'].match?(/\A(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\z/)&&r['mac']!='00:00:00:00:00:00'&&!excluded_ips.include?(r['ip'])&&!excluded_macs.include?(r['mac'])}
+  rows.group_by{|r|r['ip']}.filter_map do |ip,items|
+   next if items.map{|r|r['mac']}.uniq.size!=1
+   mac=items.first['mac'];next if rows.any?{|r|r['mac']==mac&&r['ip']!=ip}
+   label=items.map{|r|r['hostname'].to_s}.find{|v|!v.empty?&&v!='*'&&!v.match?(/[\x00-\x1f\x7f]/)}
+   items.first.merge('hostname'=>(label||'未命名设备')[0,80],'neighbor'=>states[ip],'connections'=>0)
+  end.sort_by{|r|PhoneSettings.ipnum(r['ip'])}.first(256)
+ end
  def self.tick(state,phones,counters,now,boot)
   state={'started_at'=>now,'devices'=>{}} unless state.is_a?(Hash) && state['devices'].is_a?(Hash)
   day=Time.at(now).strftime('%Y-%m-%d');month=day[0,7]
@@ -66,6 +89,7 @@ module PhoneTelemetry
    group['region']=region(group['node'])
    group['phones'].each do |phone|
     d=state.fetch('devices',{}).fetch(phone['ip'],{})
+    d={} if !phone['mac'].to_s.empty?&&d['mac']&&d['mac']!=phone['mac'].downcase
     key,evidence,seen=online(phone['connections'],phone['neighbor'],d['last_seen'],now)
     phone.merge!('online_state'=>key,'online_evidence'=>evidence,'last_seen'=>seen.to_i,'node'=>group['node'],'group'=>group['id'],'region'=>group['region'])
     today=d.fetch('days',{}).fetch(day,{'up'=>0,'down'=>0});monthly=d.fetch('months',{}).fetch(month,{'up'=>0,'down'=>0})
