@@ -97,9 +97,8 @@ module PhoneAlignment
    hosts=document ? PhoneBindings.hosts : PhoneImport.hosts
    macs=ips.flat_map{|ip|h=hosts.find{|row|row['ip']==ip};raise "缺少静态租约 #{ip}" unless h;h.fetch('mac','').downcase.split}.uniq
    macs.each{|m|PhoneBindings.mac(m)}
-   nft=nft.sub(/set codex_phone4 \{.*?^\}/m,"set codex_phone4 {\n type ipv4_addr\n flags interval\n auto-merge\n elements = { #{ip_elements(ips)} }\n}")
-   nft=nft.sub(/set codex_phone_mac \{.*?^\}/m,"set codex_phone_mac {\n type ether_addr\n elements = { #{macs.join(', ')} }\n}")
-   nft=nft.gsub(/^ elements = \{  \}\n/,'') if ips.empty?
+   nft=nft.sub(/set codex_phone4 \{.*?^\}/m,"set codex_phone4 {\n type ipv4_addr\n flags interval\n auto-merge\n#{" elements = { #{ip_elements(ips)} }\n" unless ips.empty?}}")
+   nft=nft.sub(/set codex_phone_mac \{.*?^\}/m,"set codex_phone_mac {\n type ether_addr\n#{" elements = { #{macs.join(', ')} }\n" unless macs.empty?}}")
    PhoneApply.atomic(nft_file,nft);command('fw4','check')
    PhoneBindings.status('generated',{'backup'=>backup,'message'=>'文件已合并并通过语法检查；等待运行态验收'})
    if live

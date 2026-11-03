@@ -145,8 +145,8 @@ def nft_text(mapping,hs)
  ips=mapping.flat_map{|g|g['ips']}.uniq.sort_by{|ip|ip.split('.').map(&:to_i)}
  macs=ips.flat_map{|ip|h=hs.find{|x|x['ip']==ip};raise "缺少 #{ip} 的静态租约 MAC" unless h;h.fetch('mac','').downcase.split}.uniq
  raise 'MAC 数据异常' unless macs.all?{|m|m.match?(/\A(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\z/)}
- s="set codex_phone4 {\n type ipv4_addr\n flags interval\n auto-merge\n elements = { #{ip_elements(ips)} }\n}\n"
- s+="set codex_phone_mac {\n type ether_addr\n elements = { #{macs.join(', ')} }\n}\n"
+ s="set codex_phone4 {\n type ipv4_addr\n flags interval\n auto-merge\n#{" elements = { #{ip_elements(ips)} }\n" unless ips.empty?}}\n"
+ s+="set codex_phone_mac {\n type ether_addr\n#{" elements = { #{macs.join(', ')} }\n" unless macs.empty?}}\n"
  s+="chain codex_phone_guard {\n type filter hook forward priority -10; policy accept;\n iifname \"#{PhoneSettings['bridge']}\" oifname != \"#{PhoneSettings['bridge']}\" ip saddr @codex_phone4 counter drop comment \"Phone fixed egress: no direct forwarding\"\n iifname \"#{PhoneSettings['bridge']}\" oifname != \"#{PhoneSettings['bridge']}\" ether saddr @codex_phone_mac counter drop comment \"Phone fixed egress: IPv6 and address-change guard\"\n}\n"
  s+="chain codex_phone_dns {\n type nat hook prerouting priority -101; policy accept;\n"
  mapping.reject{|g|g['ips'].empty?}.each{|g|s+=" iifname \"#{PhoneSettings['bridge']}\" ip saddr { #{g['ips'].join(', ')} } meta l4proto { tcp, udp } th dport 53 counter redirect to :#{g['dns_port']} comment \"Phone DNS group #{g['id']}\"\n"}
