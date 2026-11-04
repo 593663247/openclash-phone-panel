@@ -2,7 +2,7 @@
   "name": "openclash-phone-panel",
   "private": true,
   "scripts": {
-    "test": "node tests/test-preview.cjs && node tests/test-features.cjs && node tests/test-nodes.cjs && node tests/test-workflow.cjs && node tests/test-navigation.cjs"
+    "test": "node tests/test-preview.cjs && node tests/test-features.cjs && node tests/test-nodes.cjs && node tests/test-workflow.cjs && node tests/test-navigation.cjs && python3 tests/test-dns-priority.py && python3 tests/test-maintenance.py && python3 tests/test-package.py"
   },
   "devDependencies": {
     "jsdom": "30.1.3"

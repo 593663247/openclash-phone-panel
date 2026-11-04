@@ -17,12 +17,12 @@ module PanelTasks
   when NilClass;'null';when TrueClass;'true';when FalseClass;'false';else;x.to_s;end
  end
  def self.write(id,d)
-  p=DIR+'/'+id+'.yaml';File.open(p+'.tmp','w',0600){|f|f.write(d.to_yaml)};File.rename(p+'.tmp',p)
+  p=DIR+'/'+id+'.yaml';t=p+'.tmp-'+Process.pid.to_s+'-'+rand(1<<32).to_s;File.open(t,'w',0600){|f|f.write(d.to_yaml)};File.rename(t,p)
  end
  def self.execute(mode,arg,parameters={})
   Dir.mkdir(DIR,0700) unless Dir.exist?(DIR)
   if mode=='list'
-   return {'tasks'=>Dir.glob(DIR+'/*.yaml').sort.reverse.first(20).map{|f|YAML.safe_load(File.read(f)).reject{|k,_|k=='parameters'}}}
+   return {'tasks'=>Dir.glob(DIR+'/*.yaml').sort.reverse.first(20).map{|f|begin;v=YAML.safe_load(File.read(f));v.is_a?(Hash) ? v.reject{|k,_|k=='parameters'} : nil;rescue StandardError;nil;end}.compact}
   end
   if mode=='start'
    return PhoneOperations.start('initialize',{}) if arg=='initialize'

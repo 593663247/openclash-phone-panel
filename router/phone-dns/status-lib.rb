@@ -48,8 +48,8 @@ module PhoneStatus
  all_observed=groups+[{'node'=>'其他局域网设备','phones'=>other}]
  monitor=PhoneTelemetry.decorate(all_observed)
  groups.each{|g|g['health']=PhoneHealth.summary(g)}
- result={'other_devices'=>other,'other_devices_limit'=>256,'monitor'=>monitor,'connections_available'=>connections_available,'settings'=>PhoneSettings.values,'pending_imports'=>imports.fetch('pending',[]),'time'=>Time.now.strftime('%Y-%m-%d %H:%M:%S %z'),'groups'=>groups,'dns_redirect_ready'=>mapping.reject{|g|g['ips'].empty?}.all?{|g|nft.include?(":#{g['dns_port']}")},
- 'guard_ready'=>guard.include?('drop'),'logs'=>lines,'scope'=>managed_ips.join(', '),'device_count'=>managed_ips.size,'read_only'=>false}
+ result={'other_devices'=>other,'other_devices_limit'=>256,'monitor'=>monitor,'connections_available'=>connections_available,'settings'=>PhoneSettings.values,'pending_imports'=>imports.fetch('pending',[]),'time'=>Time.now.strftime('%Y-%m-%d %H:%M:%S %z'),'groups'=>groups,'dns_redirect_ready'=>mapping.reject{|g|g['ips'].empty?}.all?{|g|nft.match?(/redirect to :#{g['dns_port']}(?![0-9])/)},
+ 'guard_ready'=>(guard.include?('@codex_phone4') && guard.include?('@codex_phone_mac') && guard.scan('drop').size>=2),'logs'=>lines,'scope'=>managed_ips.join(', '),'device_count'=>managed_ips.size,'read_only'=>false}
  result
  rescue =>e
  {'error'=>'无法读取面板状态，请检查独立 DNS、监测配置和 OpenClash','detail'=>e.class.to_s}
