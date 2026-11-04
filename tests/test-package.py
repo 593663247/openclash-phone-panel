@@ -4,7 +4,11 @@ root=pathlib.Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix='phone-package-') as temp:
  subprocess.run([sys.executable,str(root/'scripts/build-package.py'),'--output',temp],cwd=root,check=True,stdout=subprocess.DEVNULL)
  out=pathlib.Path(temp)
- subprocess.run(['ruby',str(root/'tests/check-update-package.rb'),str(out/'phone-panel-update.tar.gz')],cwd=out,check=True)
+ rv=subprocess.run(['ruby','-e','print RUBY_VERSION'],capture_output=True,text=True).stdout.strip()
+ if tuple(int(x) for x in (rv or '0.0').split('.')[:2])>=(2,7):
+  subprocess.run(['ruby',str(root/'tests/check-update-package.rb'),str(out/'phone-panel-update.tar.gz')],cwd=out,check=True)
+ else:
+  print('SKIP: update package Ruby check needs Ruby >= 2.7, found '+(rv or 'none'))
  bundle=next(out.glob('*Windows.zip'))
  with zipfile.ZipFile(bundle) as z:
   assert z.testzip() is None

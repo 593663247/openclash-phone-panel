@@ -1,7 +1,7 @@
 from pathlib import Path
 import re
 ROOT = Path(__file__).resolve().parents[1]
-for name in ("router/nftables/90-phone-fixed-egress.nft", "router/phone-dns/align-dns.rb", "router/phone-dns/device-manager.rb"):
+for name in ("router/nftables/90-phone-fixed-egress.nft", "router/phone-dns/alignment.rb", "router/phone-dns/device-manager.rb"):
     text = (ROOT / name).read_text()
     assert "priority -101;" in text, name
     assert -101 < -100  # precedes OpenClash DNS Hijack at dstnat
